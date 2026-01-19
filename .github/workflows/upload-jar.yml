@@ -1,0 +1,32 @@
+name: Upload JAR to Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  upload:
+    name: Build and upload JAR
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: maven
+
+      - name: Build JAR
+        run: mvn -B package -DskipTests
+
+      - name: Upload JAR to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          files: target/*.jar
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
