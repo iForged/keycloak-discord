@@ -14,14 +14,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.keycloak.social.discord;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.UriBuilder;
 import org.jboss.logging.Logger;
 import org.keycloak.broker.oidc.AbstractOAuth2IdentityProvider;
 import org.keycloak.broker.oidc.mappers.AbstractJsonUserAttributeMapper;
+import org.keycloak.broker.provider.AuthenticationRequest;
 import org.keycloak.broker.provider.BrokeredIdentityContext;
 import org.keycloak.broker.provider.IdentityBrokerException;
 import org.keycloak.broker.provider.util.SimpleHttp;
@@ -68,20 +69,15 @@ public class DiscordIdentityProvider extends AbstractOAuth2IdentityProvider<Disc
     @Override
     protected BrokeredIdentityContext extractIdentityFromProfile(EventBuilder event, JsonNode profile) {
         BrokeredIdentityContext user = new BrokeredIdentityContext(getJsonProperty(profile, "id"), getConfig());
-
         String username = getJsonProperty(profile, "username");
         String discriminator = getJsonProperty(profile, "discriminator");
-
         if (!"0".equals(discriminator)) {
             username += "#" + discriminator;
         }
-
         user.setUsername(username);
         user.setEmail(getJsonProperty(profile, "email"));
         user.setIdp(this);
-
         AbstractJsonUserAttributeMapper.storeUserProfileForMapper(user, profile, getConfig().getAlias());
-
         return user;
     }
 
@@ -94,7 +90,6 @@ public class DiscordIdentityProvider extends AbstractOAuth2IdentityProvider<Disc
         } catch (Exception e) {
             throw new IdentityBrokerException("Could not obtain user profile from discord.", e);
         }
-
         if (getConfig().hasAllowedGuilds()) {
             if (!isAllowedGuild(accessToken)) {
                 throw new ErrorPageException(session, Response.Status.FORBIDDEN, Messages.INVALID_REQUESTER);
@@ -126,5 +121,18 @@ public class DiscordIdentityProvider extends AbstractOAuth2IdentityProvider<Disc
         } else {
             return DEFAULT_SCOPE;
         }
+    }
+
+    @Override
+    protected UriBuilder createAuthorizationUrl(AuthenticationRequest request) {
+        UriBuilder uriBuilder = super.createAuthorizationUrl(request);
+
+        String prompt = getConfig().getPrompt();
+        if (prompt != null && !prompt.trim().isEmpty()) {
+            uriBuilder.queryParam("prompt", prompt.trim());
+            log.debugf("Added prompt=%s to Discord authorization URL", prompt.trim());
+        }
+
+        return uriBuilder;
     }
 }
