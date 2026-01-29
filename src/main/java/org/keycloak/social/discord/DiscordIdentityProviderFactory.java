@@ -58,6 +58,12 @@ public class DiscordIdentityProviderFactory extends AbstractIdentityProviderFact
                 .label("Guild Id(s) to allow federation")
                 .helpText("If you want to allow federation for specific guild, enter the guild id. Please use a comma as a separator for multiple guilds.")
                 .add()
+                .property()
+                .name("prompt")
+                .type(ProviderConfigProperty.STRING_TYPE)
+                .label("Prompt")
+                .helpText("OAuth2 prompt parameter to send to Discord (e.g., 'none' to skip consent screen if scopes are already authorized). Leave empty to use default behavior.")
+                .add()
                 .build();
     }
 

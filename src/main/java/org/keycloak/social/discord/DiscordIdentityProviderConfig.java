@@ -58,6 +58,10 @@ public class DiscordIdentityProviderConfig extends OAuth2IdentityProviderConfig 
         return Collections.emptySet();
     }
 
+    public String getPrompt() {
+        return getConfig().get("prompt");
+    }
+
     public void setPrompt(String prompt) {
         getConfig().put("prompt", prompt);
     }
