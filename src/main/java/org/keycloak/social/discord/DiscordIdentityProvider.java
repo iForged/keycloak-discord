@@ -25,6 +25,7 @@ import org.keycloak.broker.oidc.mappers.AbstractJsonUserAttributeMapper;
 import org.keycloak.broker.provider.AuthenticationRequest;
 import org.keycloak.broker.provider.BrokeredIdentityContext;
 import org.keycloak.broker.provider.IdentityBrokerException;
+import org.keycloak.broker.provider.UserAuthenticationIdentityProvider;
 import org.keycloak.broker.provider.util.SimpleHttp;
 import org.keycloak.broker.social.SocialIdentityProvider;
 import org.keycloak.events.EventBuilder;
@@ -37,8 +38,10 @@ import java.util.Set;
 /**
  * @author <a href="mailto:wadahiro@gmail.com">Hiroyuki Wada</a>
  */
-public class DiscordIdentityProvider extends AbstractOAuth2IdentityProvider<DiscordIdentityProviderConfig>
-        implements SocialIdentityProvider<DiscordIdentityProviderConfig> {
+public class DiscordIdentityProvider 
+        extends AbstractOAuth2IdentityProvider<DiscordIdentityProviderConfig>
+        implements SocialIdentityProvider<DiscordIdentityProviderConfig>,
+                   UserAuthenticationIdentityProvider<DiscordIdentityProviderConfig> {
 
     private static final Logger log = Logger.getLogger(DiscordIdentityProvider.class);
 
@@ -71,13 +74,17 @@ public class DiscordIdentityProvider extends AbstractOAuth2IdentityProvider<Disc
         BrokeredIdentityContext user = new BrokeredIdentityContext(getJsonProperty(profile, "id"), getConfig());
         String username = getJsonProperty(profile, "username");
         String discriminator = getJsonProperty(profile, "discriminator");
+
         if (!"0".equals(discriminator)) {
             username += "#" + discriminator;
         }
+
         user.setUsername(username);
         user.setEmail(getJsonProperty(profile, "email"));
         user.setIdp(this);
+
         AbstractJsonUserAttributeMapper.storeUserProfileForMapper(user, profile, getConfig().getAlias());
+
         return user;
     }
 
@@ -85,23 +92,32 @@ public class DiscordIdentityProvider extends AbstractOAuth2IdentityProvider<Disc
     protected BrokeredIdentityContext doGetFederatedIdentity(String accessToken) {
         log.debug("doGetFederatedIdentity()");
         JsonNode profile = null;
+
         try {
-            profile = SimpleHttp.doGet(PROFILE_URL, session).header("Authorization", "Bearer " + accessToken).asJson();
+            profile = SimpleHttp.doGet(PROFILE_URL, session)
+                    .header("Authorization", "Bearer " + accessToken)
+                    .asJson();
         } catch (Exception e) {
             throw new IdentityBrokerException("Could not obtain user profile from discord.", e);
         }
+
         if (getConfig().hasAllowedGuilds()) {
             if (!isAllowedGuild(accessToken)) {
                 throw new ErrorPageException(session, Response.Status.FORBIDDEN, Messages.INVALID_REQUESTER);
             }
         }
+
         return extractIdentityFromProfile(null, profile);
     }
 
     protected boolean isAllowedGuild(String accessToken) {
         try {
-            JsonNode guilds = SimpleHttp.doGet(GROUP_URL, session).header("Authorization", "Bearer " + accessToken).asJson();
+            JsonNode guilds = SimpleHttp.doGet(GROUP_URL, session)
+                    .header("Authorization", "Bearer " + accessToken)
+                    .asJson();
+
             Set<String> allowedGuilds = getConfig().getAllowedGuildsAsSet();
+
             for (JsonNode guild : guilds) {
                 String guildId = getJsonProperty(guild, "id");
                 if (allowedGuilds.contains(guildId)) {
@@ -126,8 +142,8 @@ public class DiscordIdentityProvider extends AbstractOAuth2IdentityProvider<Disc
     @Override
     protected UriBuilder createAuthorizationUrl(AuthenticationRequest request) {
         UriBuilder uriBuilder = super.createAuthorizationUrl(request);
-
         String prompt = getConfig().getPrompt();
+
         if (prompt != null && !prompt.trim().isEmpty()) {
             uriBuilder.queryParam("prompt", prompt.trim());
             log.debugf("Added prompt=%s to Discord authorization URL", prompt.trim());
