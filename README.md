@@ -7,7 +7,7 @@ https://github.com/wadahiro/keycloak-discord
 which has not been updated since November 2024 and has lost relevance for newer Keycloak versions (especially 26.0.5+).
 
 Main improvements in this fork:
-- Full compatibility with Keycloak up to version 26.5.2
+- Full compatibility with Keycloak up to version 26.5+
 - Support for `prompt` parameter (e.g. `prompt=none` for better repeated login UX)
 - Java 21 support
 - Clean code, updated dependencies, CI/CD with GitHub Actions
