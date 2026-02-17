@@ -39,8 +39,9 @@ import org.keycloak.services.messages.Messages;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 
-public class DiscordIdentityProvider 
+public class DiscordIdentityProvider
         extends AbstractOAuth2IdentityProvider<DiscordIdentityProviderConfig>
         implements SocialIdentityProvider<DiscordIdentityProviderConfig>,
                    UserAuthenticationIdentityProvider<DiscordIdentityProviderConfig> {
@@ -52,17 +53,21 @@ public class DiscordIdentityProvider
     public static final String PROFILE_URL = "https://discord.com/api/users/@me";
     public static final String GROUP_URL = "https://discord.com/api/users/@me/guilds";
     public static final String GUILD_MEMBER_URL = "https://discord.com/api/users/@me/guilds/%s/member";
-
     public static final String DEFAULT_SCOPE = "identify email";
     public static final String GUILDS_SCOPE = "guilds";
     public static final String ROLES_SCOPE = "guilds.members.read";
+
+    public static final String USER_PICTURE_URL = "https://cdn.discordapp.com/avatars/%s/%s.%s?size=%s";
+
+    private static final Pattern AVATAR_HASH_PATTERN = Pattern.compile("^(a_)?[0-9a-f]{32}$");
+    private static final Pattern DISCORD_ID_PATTERN = Pattern.compile("^\\d+$");
 
     public DiscordIdentityProvider(KeycloakSession session, DiscordIdentityProviderConfig config) {
         super(session, config);
         config.setAuthorizationUrl(AUTH_URL);
         config.setTokenUrl(TOKEN_URL);
         config.setUserInfoUrl(PROFILE_URL);
-        
+
         if (config.isPromptNone()) {
             config.setPrompt("none");
         }
@@ -81,27 +86,52 @@ public class DiscordIdentityProvider
     @Override
     protected BrokeredIdentityContext extractIdentityFromProfile(EventBuilder event, JsonNode profile) {
         BrokeredIdentityContext user = new BrokeredIdentityContext(getJsonProperty(profile, "id"), getConfig());
+
         String username = getJsonProperty(profile, "username");
         String discriminator = getJsonProperty(profile, "discriminator");
-
         if (!"0".equals(discriminator)) {
             username += "#" + discriminator;
         }
 
         user.setUsername(username);
         user.setEmail(getJsonProperty(profile, "email"));
-        user.setIdp(this);
 
+        setUserPicture(user, profile);
+
+        user.setIdp(this);
         AbstractJsonUserAttributeMapper.storeUserProfileForMapper(user, profile, getConfig().getAlias());
 
         return user;
+    }
+
+    private void setUserPicture(BrokeredIdentityContext user, JsonNode profile) {
+        if (user.getId() == null || !DISCORD_ID_PATTERN.matcher(user.getId()).matches()) {
+            return;
+        }
+
+        String avatarHash = getJsonProperty(profile, "avatar");
+        if (avatarHash == null || avatarHash.isEmpty() || !AVATAR_HASH_PATTERN.matcher(avatarHash).matches()) {
+            return;
+        }
+
+        String extension = "png";
+        if (avatarHash.startsWith("a_")) {
+            extension = "gif";
+        }
+
+        String pictureUrl = String.format(USER_PICTURE_URL, user.getId(), avatarHash, extension, "256");
+
+        user.setUserAttribute("picture", pictureUrl);
+
+        if (profile instanceof ObjectNode objectNode) {
+            objectNode.put("picture", pictureUrl);
+        }
     }
 
     @Override
     protected BrokeredIdentityContext doGetFederatedIdentity(String accessToken) {
         log.debug("doGetFederatedIdentity()");
         JsonNode profile;
-
         try {
             profile = SimpleHttp.doGet(PROFILE_URL, session)
                     .header("Authorization", "Bearer " + accessToken)
@@ -109,30 +139,24 @@ public class DiscordIdentityProvider
         } catch (Exception e) {
             throw new IdentityBrokerException("Could not obtain user profile from discord.", e);
         }
-
         if (getConfig().hasAllowedGuilds()) {
             if (!isAllowedGuild(accessToken)) {
                 throw new ErrorPageException(session, Response.Status.FORBIDDEN, Messages.INVALID_REQUESTER);
             }
         }
-
         ArrayNode groups = JsonNodeFactory.instance.arrayNode();
-
         if (getConfig().hasMappedRoles()) {
             Map<String, HashMap<String, String>> mappedRoles = getConfig().getMappedRolesAsMap();
-
             for (String guildId : mappedRoles.keySet()) {
                 JsonNode guildMember;
                 try {
                     guildMember = SimpleHttp.doGet(String.format(GUILD_MEMBER_URL, guildId), session)
                             .header("Authorization", "Bearer " + accessToken)
                             .asJson();
-
                     if (guildMember.has("joined_at")) {
                         if (mappedRoles.get(guildId).containsKey(guildId)) {
                             groups.add(mappedRoles.get(guildId).get(guildId));
                         }
-
                         JsonNode rolesNode = guildMember.get("roles");
                         if (rolesNode != null && rolesNode.isArray()) {
                             for (JsonNode role : rolesNode) {
@@ -148,11 +172,9 @@ public class DiscordIdentityProvider
                 }
             }
         }
-
         if (profile instanceof ObjectNode) {
             ((ObjectNode) profile).set("discord-groups", groups);
         }
-
         return extractIdentityFromProfile(null, profile);
     }
 
@@ -161,9 +183,7 @@ public class DiscordIdentityProvider
             JsonNode guilds = SimpleHttp.doGet(GROUP_URL, session)
                     .header("Authorization", "Bearer " + accessToken)
                     .asJson();
-
             Set<String> allowedGuilds = getConfig().getAllowedGuildsAsSet();
-
             for (JsonNode guild : guilds) {
                 String guildId = getJsonProperty(guild, "id");
                 if (allowedGuilds.contains(guildId)) {
@@ -179,14 +199,12 @@ public class DiscordIdentityProvider
     @Override
     protected String getDefaultScopes() {
         String scopes = DEFAULT_SCOPE;
-
         if (getConfig().hasAllowedGuilds()) {
             scopes += " " + GUILDS_SCOPE;
         }
         if (getConfig().hasMappedRoles()) {
             scopes += " " + ROLES_SCOPE;
         }
-
         return scopes;
     }
 
@@ -194,12 +212,10 @@ public class DiscordIdentityProvider
     protected UriBuilder createAuthorizationUrl(AuthenticationRequest request) {
         UriBuilder uriBuilder = super.createAuthorizationUrl(request);
         String prompt = getConfig().getPrompt();
-
         if (prompt != null && !prompt.trim().isEmpty()) {
             uriBuilder.queryParam("prompt", prompt.trim());
             log.debugf("Added prompt=%s to Discord authorization URL", prompt.trim());
         }
-
         return uriBuilder;
     }
 }
