@@ -30,9 +30,9 @@ import java.util.stream.Collectors;
 public class DiscordIdentityProviderConfig extends OAuth2IdentityProviderConfig {
 
     public static final String ALLOWED_GUILDS = "allowedGuilds";
-    public static final String MAPPED_ROLES   = "mappedRoles";
-    public static final String PROMPT_NONE    = "promptNone";
-    public static final String PROMPT         = "prompt";
+    public static final String MAPPED_ROLES = "mappedRoles";
+    public static final String PROMPT_NONE = "promptNone";
+    public static final String PROMPT = "prompt";
 
     public DiscordIdentityProviderConfig(IdentityProviderModel model) {
         super(model);
@@ -46,7 +46,17 @@ public class DiscordIdentityProviderConfig extends OAuth2IdentityProviderConfig 
     }
 
     public void setAllowedGuilds(String allowedGuilds) {
-        getConfig().put(ALLOWED_GUILDS, allowedGuilds);
+        if (allowedGuilds == null || allowedGuilds.trim().isEmpty()) {
+            getConfig().remove(ALLOWED_GUILDS);
+            return;
+        }
+
+        String cleaned = Arrays.stream(allowedGuilds.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .collect(Collectors.joining(", "));
+
+        getConfig().put(ALLOWED_GUILDS, cleaned);
     }
 
     public boolean hasAllowedGuilds() {
@@ -55,13 +65,15 @@ public class DiscordIdentityProviderConfig extends OAuth2IdentityProviderConfig 
     }
 
     public Set<String> getAllowedGuildsAsSet() {
-        if (hasAllowedGuilds()) {
-            String guilds = getConfig().get(ALLOWED_GUILDS);
-            return Arrays.stream(guilds.split(","))
-                         .map(String::trim)
-                         .collect(Collectors.toSet());
+        String guilds = getConfig().get(ALLOWED_GUILDS);
+        if (guilds == null || guilds.trim().isEmpty()) {
+            return Collections.emptySet();
         }
-        return Collections.emptySet();
+
+        return Arrays.stream(guilds.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .collect(Collectors.toSet());
     }
 
     public String getMappedRoles() {
@@ -90,11 +102,9 @@ public class DiscordIdentityProviderConfig extends OAuth2IdentityProviderConfig 
             if (entry.isEmpty()) continue;
 
             String[] parts = entry.split(":", 3);
-            if (parts.length != 3) {
-                continue;
-            }
+            if (parts.length != 3) continue;
 
-            String guildId   = parts[0].trim();
+            String guildId = parts[0].trim();
             String roleOrGuildId = parts[1].trim();
             String groupName = parts[2].trim();
 
