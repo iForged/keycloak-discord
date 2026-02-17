@@ -17,6 +17,9 @@
 package org.keycloak.social.discord;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriBuilder;
 import org.jboss.logging.Logger;
@@ -33,11 +36,10 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.services.ErrorPageException;
 import org.keycloak.services.messages.Messages;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 
-/**
- * @author <a href="mailto:wadahiro@gmail.com">Hiroyuki Wada</a>
- */
 public class DiscordIdentityProvider 
         extends AbstractOAuth2IdentityProvider<DiscordIdentityProviderConfig>
         implements SocialIdentityProvider<DiscordIdentityProviderConfig>,
@@ -49,14 +51,20 @@ public class DiscordIdentityProvider
     public static final String TOKEN_URL = "https://discord.com/api/oauth2/token";
     public static final String PROFILE_URL = "https://discord.com/api/users/@me";
     public static final String GROUP_URL = "https://discord.com/api/users/@me/guilds";
+    public static final String GUILD_MEMBER_URL = "https://discord.com/api/users/@me/guilds/%s/member";
+
     public static final String DEFAULT_SCOPE = "identify email";
     public static final String GUILDS_SCOPE = "guilds";
+    public static final String ROLES_SCOPE = "guilds.members.read";
 
     public DiscordIdentityProvider(KeycloakSession session, DiscordIdentityProviderConfig config) {
         super(session, config);
         config.setAuthorizationUrl(AUTH_URL);
         config.setTokenUrl(TOKEN_URL);
         config.setUserInfoUrl(PROFILE_URL);
+        if (config.setPromptNone()) {
+            config.setPrompt("none");
+        }
     }
 
     @Override
@@ -91,7 +99,7 @@ public class DiscordIdentityProvider
     @Override
     protected BrokeredIdentityContext doGetFederatedIdentity(String accessToken) {
         log.debug("doGetFederatedIdentity()");
-        JsonNode profile = null;
+        JsonNode profile;
 
         try {
             profile = SimpleHttp.doGet(PROFILE_URL, session)
@@ -105,6 +113,43 @@ public class DiscordIdentityProvider
             if (!isAllowedGuild(accessToken)) {
                 throw new ErrorPageException(session, Response.Status.FORBIDDEN, Messages.INVALID_REQUESTER);
             }
+        }
+
+        ArrayNode groups = JsonNodeFactory.instance.arrayNode();
+
+        if (getConfig().hasMappedRoles()) {
+            Map<String, HashMap<String, String>> mappedRoles = getConfig().getMappedRolesAsMap();
+
+            for (String guildId : mappedRoles.keySet()) {
+                JsonNode guildMember;
+                try {
+                    guildMember = SimpleHttp.doGet(String.format(GUILD_MEMBER_URL, guildId), session)
+                            .header("Authorization", "Bearer " + accessToken)
+                            .asJson();
+
+                    if (guildMember.has("joined_at")) {
+                        if (mappedRoles.get(guildId).containsKey(guildId)) {
+                            groups.add(mappedRoles.get(guildId).get(guildId));
+                        }
+
+                        JsonNode rolesNode = guildMember.get("roles");
+                        if (rolesNode != null && rolesNode.isArray()) {
+                            for (JsonNode role : rolesNode) {
+                                String roleId = role.textValue();
+                                if (mappedRoles.get(guildId).containsKey(roleId)) {
+                                    groups.add(mappedRoles.get(guildId).get(roleId));
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    log.debugf("Could not obtain guild member data for guild %s from Discord: %s", guildId, e.getMessage());
+                }
+            }
+        }
+
+        if (profile instanceof ObjectNode) {
+            ((ObjectNode) profile).set("discord-groups", groups);
         }
 
         return extractIdentityFromProfile(null, profile);
@@ -132,11 +177,16 @@ public class DiscordIdentityProvider
 
     @Override
     protected String getDefaultScopes() {
+        String scopes = DEFAULT_SCOPE;
+
         if (getConfig().hasAllowedGuilds()) {
-            return DEFAULT_SCOPE + " " + GUILDS_SCOPE;
-        } else {
-            return DEFAULT_SCOPE;
+            scopes += " " + GUILDS_SCOPE;
         }
+        if (getConfig().hasMappedRoles()) {
+            scopes += " " + ROLES_SCOPE;
+        }
+
+        return scopes;
     }
 
     @Override

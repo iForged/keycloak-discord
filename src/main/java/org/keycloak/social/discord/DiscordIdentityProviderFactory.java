@@ -26,9 +26,6 @@ import org.keycloak.provider.ProviderConfigurationBuilder;
 
 import java.util.List;
 
-/**
- * @author <a href="mailto:wadahiro@gmail.com">Hiroyuki Wada</a>
- */
 public class DiscordIdentityProviderFactory extends AbstractIdentityProviderFactory<DiscordIdentityProvider>
         implements SocialIdentityProviderFactory<DiscordIdentityProvider> {
 
@@ -41,7 +38,11 @@ public class DiscordIdentityProviderFactory extends AbstractIdentityProviderFact
 
     @Override
     public DiscordIdentityProvider create(KeycloakSession session, IdentityProviderModel model) {
-        return new DiscordIdentityProvider(session, new DiscordIdentityProviderConfig(model));
+        DiscordIdentityProviderConfig config = new DiscordIdentityProviderConfig(model);
+        if (config.isPromptNone()) {
+            config.setPrompt("none");
+        }
+        return new DiscordIdentityProvider(session, config);
     }
 
     @Override
@@ -53,17 +54,34 @@ public class DiscordIdentityProviderFactory extends AbstractIdentityProviderFact
     public List<ProviderConfigProperty> getConfigProperties() {
         return ProviderConfigurationBuilder.create()
                 .property()
-                .name("allowedGuilds")
+                .name(DiscordIdentityProviderConfig.ALLOWED_GUILDS)
                 .type(ProviderConfigProperty.STRING_TYPE)
                 .label("Guild Id(s) to allow federation")
                 .helpText("If you want to allow federation for specific guild, enter the guild id. Please use a comma as a separator for multiple guilds.")
                 .add()
+
                 .property()
-                .name("prompt")
+                .name(DiscordIdentityProviderConfig.PROMPT)
                 .type(ProviderConfigProperty.STRING_TYPE)
                 .label("Prompt")
                 .helpText("OAuth2 prompt parameter to send to Discord (e.g., 'none' to skip consent screen if scopes are already authorized). Leave empty to use default behavior.")
                 .add()
+
+                .property()
+                .name(DiscordIdentityProviderConfig.MAPPED_ROLES)
+                .type(ProviderConfigProperty.STRING_TYPE)
+                .label("Discord Roles mapping")
+                .helpText("Map Discord roles to Keycloak groups. Format: <guild_id>:<role_id>:<group_name_in_keycloak> or <guild_id>::<group_name> (for membership in guild without specific role). Use comma as separator for multiple mappings. Example: 123456789:987654321:Moderators,111222333::Members")
+                .add()
+
+                .property()
+                .name(DiscordIdentityProviderConfig.PROMPT_NONE)
+                .type(ProviderConfigProperty.BOOLEAN_TYPE)
+                .label("Skip Discord prompt (prompt=none)")
+                .helpText("If enabled, adds 'prompt=none' to the authorization URL. This skips the Discord consent screen for users who have already authorized the application (useful for seamless login).")
+                .defaultValue(Boolean.FALSE)
+                .add()
+
                 .build();
     }
 

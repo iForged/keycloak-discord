@@ -22,13 +22,17 @@ import org.keycloak.models.IdentityProviderModel;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-/**
- * @author <a href="mailto:wadahiro@gmail.com">Hiroyuki Wada</a>
- */
 public class DiscordIdentityProviderConfig extends OAuth2IdentityProviderConfig {
+
+    public static final String ALLOWED_GUILDS = "allowedGuilds";
+    public static final String MAPPED_ROLES   = "mappedRoles";
+    public static final String PROMPT_NONE    = "promptNone";
+    public static final String PROMPT         = "prompt";
 
     public DiscordIdentityProviderConfig(IdentityProviderModel model) {
         super(model);
@@ -38,31 +42,85 @@ public class DiscordIdentityProviderConfig extends OAuth2IdentityProviderConfig 
     }
 
     public String getAllowedGuilds() {
-        return getConfig().get("allowedGuilds");
+        return getConfig().get(ALLOWED_GUILDS);
     }
 
     public void setAllowedGuilds(String allowedGuilds) {
-        getConfig().put("allowedGuilds", allowedGuilds);
+        getConfig().put(ALLOWED_GUILDS, allowedGuilds);
     }
 
     public boolean hasAllowedGuilds() {
-        String guilds = getConfig().get("allowedGuilds");
+        String guilds = getConfig().get(ALLOWED_GUILDS);
         return guilds != null && !guilds.trim().isEmpty();
     }
 
     public Set<String> getAllowedGuildsAsSet() {
         if (hasAllowedGuilds()) {
-            String guilds = getConfig().get("allowedGuilds");
-            return Arrays.stream(guilds.split(",")).map(x -> x.trim()).collect(Collectors.toSet());
+            String guilds = getConfig().get(ALLOWED_GUILDS);
+            return Arrays.stream(guilds.split(","))
+                         .map(String::trim)
+                         .collect(Collectors.toSet());
         }
         return Collections.emptySet();
     }
 
+    public String getMappedRoles() {
+        return getConfig().get(MAPPED_ROLES);
+    }
+
+    public void setMappedRoles(String mappedRoles) {
+        getConfig().put(MAPPED_ROLES, mappedRoles);
+    }
+
+    public boolean hasMappedRoles() {
+        String mappedRoles = getConfig().get(MAPPED_ROLES);
+        return mappedRoles != null && !mappedRoles.trim().isEmpty();
+    }
+
+    public Map<String, HashMap<String, String>> getMappedRolesAsMap() {
+        if (!hasMappedRoles()) {
+            return Collections.emptyMap();
+        }
+
+        String mappedRolesStr = getMappedRoles();
+        Map<String, HashMap<String, String>> parsed = new HashMap<>();
+
+        for (String entry : mappedRolesStr.split(",")) {
+            entry = entry.trim();
+            if (entry.isEmpty()) continue;
+
+            String[] parts = entry.split(":", 3);
+            if (parts.length != 3) {
+                continue;
+            }
+
+            String guildId   = parts[0].trim();
+            String roleOrGuildId = parts[1].trim();
+            String groupName = parts[2].trim();
+
+            if (groupName.isEmpty()) continue;
+
+            parsed.computeIfAbsent(guildId, k -> new HashMap<>())
+                  .put(roleOrGuildId, groupName);
+        }
+
+        return parsed;
+    }
+
     public String getPrompt() {
-        return getConfig().get("prompt");
+        return getConfig().get(PROMPT);
     }
 
     public void setPrompt(String prompt) {
-        getConfig().put("prompt", prompt);
+        getConfig().put(PROMPT, prompt);
+    }
+
+    public boolean isPromptNone() {
+        String value = getConfig().get(PROMPT_NONE);
+        return value != null && Boolean.parseBoolean(value);
+    }
+
+    public void setPromptNone(boolean promptNone) {
+        getConfig().put(PROMPT_NONE, String.valueOf(promptNone));
     }
 }
