@@ -11,7 +11,7 @@
       {
         "mavenTarget": "deploy",
         "clean": false,
-        "updateSnapshotVersion": true,
+        "updateSnapshotVersion": false,
         "settingsPath": "/home/runner/.m2/settings.xml",
         "processAllModules": true
       }
