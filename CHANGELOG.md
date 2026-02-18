@@ -1,3 +1,10 @@
+## [1.1.2](https://github.com/iForged/keycloak-discord/compare/v1.1.1...v1.1.2) (2026-02-18)
+
+
+### Bug Fixes
+
+* update `isPromptNone` ([fcda9d0](https://github.com/iForged/keycloak-discord/commit/fcda9d07efd984f5a43b4ddd65cfcda6c12b3855))
+
 ## [1.1.2](https://github.com/iForged/keycloak-discord/compare/v1.1.1...v1.1.2) (2026-02-17)
 
 
