@@ -54,7 +54,7 @@ public class DiscordIdentityProviderConfig extends OAuth2IdentityProviderConfig 
         String cleaned = Arrays.stream(allowedGuilds.split(","))
                 .map(String::trim)
                 .filter(s -> !s.isEmpty())
-                .collect(Collectors.joining(", "));
+                .collect(Collectors.joining(","));
 
         getConfig().put(ALLOWED_GUILDS, cleaned);
     }
