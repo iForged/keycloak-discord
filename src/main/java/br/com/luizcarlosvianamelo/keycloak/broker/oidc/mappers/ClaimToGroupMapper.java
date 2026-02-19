@@ -107,7 +107,6 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
         if(roles == null) {
             return new ArrayList<>();
         }
-        // convert to string list if not list
         List<String> newList = new ArrayList<>();
         if (!List.class.isAssignableFrom(roles.getClass())) {
             newList.add(roles.toString());
