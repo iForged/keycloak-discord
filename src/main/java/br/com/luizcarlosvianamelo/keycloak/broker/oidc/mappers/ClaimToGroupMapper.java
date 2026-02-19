@@ -129,13 +129,17 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
         Map<String, String> mapping = new HashMap<>();
         String[] entries = configValue.split(",");
         for (String entry : entries) {
-            String[] parts = entry.trim().split(":", 3);
-            if (parts.length >= 2) {
-                String groupName = parts[parts.length - 1].trim();
-                String roleId    = parts[parts.length - 2].trim();
+            String[] parts = entry.trim().split(":", -1);
+            if (parts.length == 3) {
+                String guildId = parts[0].trim();
+                String roleId = parts[1].trim();
+                String groupName = parts[2].trim();
                 if (!groupName.isEmpty() && !roleId.isEmpty()) {
                     mapping.put(groupName, roleId);
+                    logger.debugf("Parsed mapping: group [%s] → role [%s] (guild [%s])", groupName, roleId, guildId);
                 }
+            } else {
+                logger.warnf("Invalid mapping entry: [%s] — expected 3 parts", entry);
             }
         }
         return mapping;
