@@ -105,7 +105,6 @@ public class DiscordIdentityProvider
             }
         
             user.setEmail(emailNode.asText());
-            user.setEmailVerified(true);
         }
 
         setUserPicture(user, profile);
