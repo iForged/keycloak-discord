@@ -129,10 +129,10 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
         Map<String, String> mapping = new HashMap<>();
         String[] entries = configValue.split(",");
         for (String entry : entries) {
-            String[] parts = entry.trim().split(":", 2);
-            if (parts.length == 2) {
-                String groupName = parts[0].trim();
-                String roleId = parts[1].trim();
+            String[] parts = entry.trim().split(":", 3);
+            if (parts.length >= 2) {
+                String groupName = parts[parts.length - 1].trim();
+                String roleId    = parts[parts.length - 2].trim();
                 if (!groupName.isEmpty() && !roleId.isEmpty()) {
                     mapping.put(groupName, roleId);
                 }
