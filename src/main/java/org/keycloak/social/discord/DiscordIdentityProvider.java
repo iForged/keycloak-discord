@@ -94,7 +94,19 @@ public class DiscordIdentityProvider
         }
 
         user.setUsername(username);
-        user.setEmail(getJsonProperty(profile, "email"));
+        
+        JsonNode emailNode = profile.get("email");
+        JsonNode verifiedNode = profile.get("verified");
+        
+        if (emailNode != null && !emailNode.isNull()) {
+            if (verifiedNode == null || !verifiedNode.asBoolean()) {
+                log.warnf("Discord login attempt with unverified email: %s", emailNode.asText());
+                throw new IdentityBrokerException("Discord account email is not verified");
+            }
+        
+            user.setEmail(emailNode.asText());
+            user.setEmailVerified(true);
+        }
 
         setUserPicture(user, profile);
 
