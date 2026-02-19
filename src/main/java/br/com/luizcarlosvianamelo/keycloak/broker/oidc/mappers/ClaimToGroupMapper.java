@@ -56,7 +56,7 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
                 "be ignored.");
         property.setType(ProviderConfigProperty.BOOLEAN_TYPE);
         CONFIG_PROPERTIES.add(property);
-       
+      
         property = new ProviderConfigProperty();
         property.setName(CLEAR_ROLES_IF_NONE);
         property.setLabel("Clear discord roles if no roles found");
@@ -66,7 +66,7 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
         property = new ProviderConfigProperty();
         property.setName(DISCORD_ROLE_MAPPING);
         property.setLabel("Discord Role Mapping");
-        property.setHelpText("Format: GroupName:discordRoleId, GroupName2:discordRoleId2\nUsed to set discord_role_id attribute on created/updated groups");
+        property.setHelpText("Format: GroupName:discordRoleId, GroupName2:discordRoleId2\nUsed to set discord_role_id attribute **only on newly created** groups");
         property.setType(ProviderConfigProperty.STRING_TYPE);
         CONFIG_PROPERTIES.add(property);
     }
@@ -138,24 +138,27 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
                     mapping.put(groupName, roleId);
                     logger.debugf("Parsed mapping: group [%s] → role [%s] (guild [%s])", groupName, roleId, guildId);
                 }
+            } else if (parts.length == 2) {
+                String groupName = parts[0].trim();
+                String roleId = parts[1].trim();
+                if (!groupName.isEmpty() && !roleId.isEmpty()) {
+                    mapping.put(groupName, roleId);
+                    logger.debugf("Parsed mapping (2 parts): group [%s] → role [%s]", groupName, roleId);
+                }
             } else {
-                logger.warnf("Invalid mapping entry: [%s] — expected 3 parts", entry);
+                logger.warnf("Invalid mapping entry: [%s] — expected 2 or 3 parts", entry);
             }
         }
         return mapping;
     }
     private void syncGroups(RealmModel realm, UserModel user, IdentityProviderMapperModel mapperModel, BrokeredIdentityContext context) {
-        // check configurations
         String groupClaimName = mapperModel.getConfig().get(CLAIM);
         String containsText = mapperModel.getConfig().get(CONTAINS_TEXT);
         boolean createGroups = Boolean.parseBoolean(mapperModel.getConfig().get(CREATE_GROUPS));
-        // do nothing if no claim was adjusted
         if (isEmpty(groupClaimName))
             return;
-        // get new groups
         List<String> newGroupsList = getClaimValue(context, groupClaimName);
         boolean clearRolesIfNone = Boolean.parseBoolean(mapperModel.getConfig().get(CLEAR_ROLES_IF_NONE));
-        // Clear roles if config option enabled
         if (newGroupsList.isEmpty() && !clearRolesIfNone) {
             logger.debugf("Realm [%s], IdP [%s]: no group claim (claim name: [%s]) for user [%s], ignoring...",
                     realm.getName(),
@@ -169,7 +172,6 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
                 mapperModel.getIdentityProviderAlias(),
                 user.getUsername());
         Map<String, String> discordMapping = getDiscordRoleMapping(mapperModel);
-        // get user current groups
         Set<GroupModel> currentGroups = user.getGroupsStream()
                 .filter(g -> isEmpty(containsText) || g.getName().contains(containsText))
                 .collect(Collectors.toSet());
@@ -182,13 +184,10 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
                         .map(GroupModel::getName)
                         .collect(Collectors.joining(","))
         );
-        // filter the groups by its name
-        @SuppressWarnings("unchecked")
         Set<String> newGroupsNames = newGroupsList
                 .stream()
                 .filter(t -> isEmpty(containsText) || t.contains(containsText))
                 .collect(Collectors.toSet());
-        // get new groups
         Set<GroupModel> newGroups = getNewGroups(realm, newGroupsNames, createGroups, discordMapping);
         logger.debugf("Realm [%s], IdP [%s]: new groups for user [%s]: %s",
                 realm.getName(),
@@ -199,11 +198,9 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
                         .map(GroupModel::getName)
                         .collect(Collectors.joining(","))
         );
-        // get the groups from which the user will be removed
         Set<GroupModel> removeGroups = getGroupsToBeRemoved(currentGroups, newGroups);
         for (GroupModel group : removeGroups)
             user.leaveGroup(group);
-        // get the groups where the user will be added
         Set<GroupModel> addGroups = getGroupsToBeAdded(currentGroups, newGroups);
         for (GroupModel group : addGroups)
             user.joinGroup(group);
@@ -216,7 +213,6 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
         Set<GroupModel> groups = new HashSet<>();
         for (String groupName : newGroupsNames) {
             GroupModel group = getGroupByName(realm, groupName);
-            // create group if not found
             boolean newlyCreated = false;
             if (group == null && createGroups) {
                 logger.debugf("Realm [%s]: creating group [%s]",
@@ -226,16 +222,18 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
                 newlyCreated = true;
             }
             if (group != null) {
-                String discordRoleId = discordMapping.get(groupName);
-                if (discordRoleId != null && !discordRoleId.isEmpty()) {
-                    String current = group.getFirstAttribute("discord_role_id");
-                    if (current == null || !current.equals(discordRoleId)) {
-                        group.setSingleAttribute("discord_role_id", discordRoleId);
-                        logger.debugf("Group [%s] → set/updated discord_role_id = %s", groupName, discordRoleId);
-                    }
+                String discordRoleIdFromConfig = discordMapping.get(groupName);
+                String current = group.getFirstAttribute("discord_role_id");
+
+                if (newlyCreated && discordRoleIdFromConfig != null && !discordRoleIdFromConfig.isEmpty()) {
+                    group.setSingleAttribute("discord_role_id", discordRoleIdFromConfig);
+                    logger.debugf("New group [%s] → set discord_role_id = %s (from config)", groupName, discordRoleIdFromConfig);
+                } else if (current != null && !current.isEmpty()) {
+                    logger.debugf("Group [%s] already has discord_role_id = %s", groupName, current);
                 } else if (newlyCreated) {
-                    logger.warnf("Created group [%s] but no discord_role_id mapping found", groupName);
+                    logger.warnf("Created group [%s] but no discord_role_id mapping found in config", groupName);
                 }
+
                 groups.add(group);
             }
         }
@@ -248,16 +246,12 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
         return group.orElse(null);
     }
     private static Set<GroupModel> getGroupsToBeRemoved(Set<GroupModel> currentGroups, Set<GroupModel> newGroups) {
-        // perform a set difference
         Set<GroupModel> resultSet = new HashSet<>(currentGroups);
-        // (Current - New) will result in a set with the groups from which the user will be removed
         resultSet.removeAll(newGroups);
         return resultSet;
     }
     private static Set<GroupModel> getGroupsToBeAdded(Set<GroupModel> currentGroups, Set<GroupModel> newGroups) {
-        // perform a set difference
         Set<GroupModel> resultSet = new HashSet<>(newGroups);
-        // (New - Current) will result in a set with the groups where the user will be added
         resultSet.removeAll(currentGroups);
         return resultSet;
     }
