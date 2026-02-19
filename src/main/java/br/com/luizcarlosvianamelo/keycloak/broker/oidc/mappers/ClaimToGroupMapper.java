@@ -191,7 +191,7 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
                 realm.getName(),
                 mapperModel.getIdentityProviderAlias(),
                 user.getUsername());
-        Map<String, String> discordMapping = getDiscordRoleMapping(mapperModel);
+        Map<String, String> discordMapping = getDiscordRoleMapping(realm, mapperModel.getIdentityProviderAlias());
         Set<GroupModel> currentGroups = user.getGroupsStream()
                 .filter(g -> isEmpty(containsText) || g.getName().contains(containsText))
                 .collect(Collectors.toSet());
