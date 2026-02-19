@@ -39,12 +39,10 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
     };
 
     private static final List<ProviderConfigProperty> CONFIG_PROPERTIES = new ArrayList<>();
-
     private static final String CONTAINS_TEXT = "contains_text";
-
     private static final String CREATE_GROUPS = "create_groups";
-    
     private static final String CLEAR_ROLES_IF_NONE = "clearRolesIfNone";
+    private static final String DISCORD_ROLE_MAPPING = "discord_role_mapping";
 
     static {
         ProviderConfigProperty property;
@@ -55,7 +53,6 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
         property.setHelpText("Name of claim to search for in token. This claim must be a string array with " +
                 "the names of the groups which the user is member. You can reference nested claims using a " +
                 "'.', i.e. 'address.locality'. To use dot (.) literally, escape it with backslash (\\.)");
-
         property.setType(ProviderConfigProperty.STRING_TYPE);
         CONFIG_PROPERTIES.add(property);
 
@@ -63,7 +60,6 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
         property.setName(CONTAINS_TEXT);
         property.setLabel("Contains text");
         property.setHelpText("Only sync groups that contains this text in its name. If empty, sync all groups.");
-
         property.setType(ProviderConfigProperty.STRING_TYPE);
         CONFIG_PROPERTIES.add(property);
 
@@ -72,7 +68,6 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
         property.setLabel("Create groups if not exists");
         property.setHelpText("Indicates if missing groups must be created in the realms. Otherwise, they will " +
                 "be ignored.");
-
         property.setType(ProviderConfigProperty.BOOLEAN_TYPE);
         CONFIG_PROPERTIES.add(property);
         
@@ -80,9 +75,15 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
         property.setName(CLEAR_ROLES_IF_NONE);
         property.setLabel("Clear discord roles if no roles found");
         property.setHelpText("Should Discord roles be cleared out if no roles can be retrieved for example when a user is no longer part of the discord server");
-
         property.setType(ProviderConfigProperty.BOOLEAN_TYPE);
         CONFIG_PROPERTIES.add(property);
+
+        property = new ProviderConfigProperty();
+        property.setName(DISCORD_ROLE_MAPPING);
+        property.setLabel("Discord Role Mapping");
+        property.setHelpText("Format: GroupName:discordRoleId, GroupName2:discordRoleId2\nUsed to set discord_role_id attribute on created/updated groups");
+        property.setType(ProviderConfigProperty.STRING_TYPE);
+        CONFIG_PROPERTIES.add(property)
     }
 
     // properties --------------------------------------------
@@ -148,6 +149,27 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
             newList = (List<String>)roles;
         }
         return newList;
+    }
+
+    private Map<String, String> getDiscordRoleMapping(IdentityProviderMapperModel mapperModel) {
+        String configValue = mapperModel.getConfig().get(DISCORD_ROLE_MAPPING);
+        if (configValue == null || configValue.trim().isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        Map<String, String> mapping = new HashMap<>();
+        String[] entries = configValue.split(",");
+        for (String entry : entries) {
+            String[] parts = entry.trim().split(":", 2);
+            if (parts.length == 2) {
+                String groupName = parts[0].trim();
+                String roleId = parts[1].trim();
+                if (!groupName.isEmpty() && !roleId.isEmpty()) {
+                    mapping.put(groupName, roleId);
+                }
+            }
+        }
+        return mapping;
     }
 
     private void syncGroups(RealmModel realm, UserModel user, IdentityProviderMapperModel mapperModel, BrokeredIdentityContext context) {
@@ -231,7 +253,7 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
                 user.getUsername());
     }
 
-    private Set<GroupModel> getNewGroups(RealmModel realm, Set<String> newGroupsNames, boolean createGroups) {
+    private Set<GroupModel> getNewGroups(RealmModel realm, Set<String> newGroupsNames, boolean createGroups, Map<String, String> discordMapping) {
 
         Set<GroupModel> groups = new HashSet<>();
 
@@ -239,15 +261,26 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
             GroupModel group = getGroupByName(realm, groupName);
 
             // create group if not found
+            boolean newlyCreated = false;
             if (group == null && createGroups) {
                 logger.debugf("Realm [%s]: creating group [%s]",
                         realm.getName(),
                         groupName);
-
                 group = realm.createGroup(groupName);
+                newlyCreated = true;
             }
 
-            if (group != null)
+            if (group != null) {
+                String discordRoleId = discordMapping.get(groupName);
+                if (discordRoleId != null && !discordRoleId.isEmpty()) {
+                    String current = group.getFirstAttribute("discord_role_id");
+                    if (current == null || !current.equals(discordRoleId)) {
+                        group.setSingleAttribute("discord_role_id", discordRoleId);
+                        logger.debugf("Group [%s] → set/updated discord_role_id = %s", groupName, discordRoleId);
+                    }
+                } else if (newlyCreated) {
+                    logger.warnf("Created group [%s] but no discord_role_id mapping found", groupName);
+                }
                 groups.add(group);
         }
 
@@ -266,20 +299,16 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
     private static Set<GroupModel> getGroupsToBeRemoved(Set<GroupModel> currentGroups, Set<GroupModel> newGroups) {
         // perform a set difference
         Set<GroupModel> resultSet = new HashSet<>(currentGroups);
-
         // (Current - New) will result in a set with the groups from which the user will be removed
         resultSet.removeAll(newGroups);
-
         return resultSet;
     }
 
     private static Set<GroupModel> getGroupsToBeAdded(Set<GroupModel> currentGroups, Set<GroupModel> newGroups) {
         // perform a set difference
         Set<GroupModel> resultSet = new HashSet<>(newGroups);
-
         // (New - Current) will result in a set with the groups where the user will be added
         resultSet.removeAll(currentGroups);
-
         return resultSet;
     }
 
