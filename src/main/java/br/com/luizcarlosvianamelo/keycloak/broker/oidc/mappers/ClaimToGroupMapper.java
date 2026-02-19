@@ -34,7 +34,6 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
     private static final String CONTAINS_TEXT = "contains_text";
     private static final String CREATE_GROUPS = "create_groups";
     private static final String CLEAR_ROLES_IF_NONE = "clearRolesIfNone";
-    private static final String DISCORD_ROLE_MAPPING = "discord_role_mapping";
 
     static {
         ProviderConfigProperty property;
@@ -65,12 +64,6 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
         property.setLabel("Clear discord roles if no roles found");
         property.setHelpText("Should Discord roles be cleared out if no roles can be retrieved for example when a user is no longer part of the discord server");
         property.setType(ProviderConfigProperty.BOOLEAN_TYPE);
-        CONFIG_PROPERTIES.add(property);
-        property = new ProviderConfigProperty();
-        property.setName(DISCORD_ROLE_MAPPING);
-        property.setLabel("Discord Role Mapping");
-        property.setHelpText("Format: GroupName:discordRoleId, GroupName2:discordRoleId2\nUsed to set discord_role_id attribute **only on newly created** groups");
-        property.setType(ProviderConfigProperty.STRING_TYPE);
         CONFIG_PROPERTIES.add(property);
     }
     // properties --------------------------------------------
@@ -124,141 +117,52 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
         }
         return newList;
     }
-    private Map<String, String> getDiscordRoleMapping(RealmModel realm, String providerAlias) {
-        IdentityProviderModel idpModel = realm.getIdentityProviderByAlias(providerAlias);
-        if (idpModel == null) {
-            logger.warnf("IdentityProvider not found for alias: %s", providerAlias);
-            return Collections.emptyMap();
-        }
-       
-        String configValue = idpModel.getConfig().get(DISCORD_ROLE_MAPPING);
-        if (configValue == null || configValue.trim().isEmpty()) {
-            logger.debug("No discord_role_mapping config in Discord IdP");
-            return Collections.emptyMap();
-        }
-   
-        Map<String, String> mapping = new HashMap<>();
-        String[] entries = configValue.split(",");
-        for (String entry : entries) {
-            String trimmed = entry.trim();
-            if (trimmed.isEmpty()) continue;
-           
-            String[] parts = trimmed.split(":", -1);
-            String groupName;
-            String roleId;
-   
-            if (parts.length == 3) {
-                roleId = parts[1].trim();
-                groupName = parts[2].trim();
-            } else if (parts.length == 2) {
-                if (trimmed.contains("::")) {
-                    roleId = null;
-                    groupName = parts[1].trim();
-                } else {
-                    roleId = parts[0].trim();
-                    groupName = parts[1].trim();
-                }
-            } else {
-                logger.warnf("Invalid mappedRoles entry: %s", trimmed);
-                continue;
-            }
-   
-            if (!groupName.isEmpty()) {
-                if (roleId != null && !roleId.isEmpty()) {
-                    mapping.put(groupName, roleId);
-                    logger.debugf("Mapping: %s → %s", groupName, roleId);
-                } else {
-                    logger.debugf("Guild membership mapping (no role): %s", groupName);
-                }
-            }
-        }
-        return mapping;
-    }
     private void syncGroups(RealmModel realm, UserModel user, IdentityProviderMapperModel mapperModel, BrokeredIdentityContext context) {
-        String groupClaimName = mapperModel.getConfig().get(CLAIM);
-        String containsText = mapperModel.getConfig().get(CONTAINS_TEXT);
         boolean createGroups = Boolean.parseBoolean(mapperModel.getConfig().get(CREATE_GROUPS));
-        if (isEmpty(groupClaimName))
-            return;
-        List<String> newGroupsList = getClaimValue(context, groupClaimName);
-        boolean clearRolesIfNone = Boolean.parseBoolean(mapperModel.getConfig().get(CLEAR_ROLES_IF_NONE));
-        if (newGroupsList.isEmpty() && !clearRolesIfNone) {
-            logger.debugf("Realm [%s], IdP [%s]: no group claim (claim name: [%s]) for user [%s], ignoring...",
-                    realm.getName(),
-                    mapperModel.getIdentityProviderAlias(),
-                    groupClaimName,
-                    user.getUsername());
-            return;
+        if (!createGroups) return;
+
+        JsonNode userInfo = (JsonNode) context.getContextData().get(OIDCIdentityProvider.USER_INFO);
+        if (userInfo == null) return;
+
+        JsonNode guildsNode = userInfo.path("guilds");
+        if (!guildsNode.isArray()) return;
+
+        Set<GroupModel> currentGroups = user.getGroupsStream().collect(Collectors.toSet());
+        Set<GroupModel> newGroups = new HashSet<>();
+
+        for (JsonNode guild : guildsNode) {
+            JsonNode rolesNode = guild.path("roles");
+            if (!rolesNode.isArray()) continue;
+
+            for (JsonNode roleNode : rolesNode) {
+                String roleId = roleNode.asText(null);
+                if (roleId == null) continue;
+
+                String groupName = "DiscordRole-" + roleId;
+
+                GroupModel group = getGroupByName(realm, groupName);
+                boolean newlyCreated = false;
+
+                if (group == null) {
+                    group = realm.createGroup(groupName);
+                    newlyCreated = true;
+                }
+
+                if (newlyCreated) {
+                    group.setSingleAttribute("discord_role_id", roleId);
+                }
+
+                newGroups.add(group);
+            }
         }
-        logger.debugf("Realm [%s], IdP [%s]: starting mapping groups for user [%s]",
-                realm.getName(),
-                mapperModel.getIdentityProviderAlias(),
-                user.getUsername());
-        Map<String, String> discordMapping = getDiscordRoleMapping(realm, mapperModel.getIdentityProviderAlias());
-        Set<GroupModel> currentGroups = user.getGroupsStream()
-                .filter(g -> isEmpty(containsText) || g.getName().contains(containsText))
-                .collect(Collectors.toSet());
-        logger.debugf("Realm [%s], IdP [%s]: current groups for user [%s]: %s",
-                realm.getName(),
-                mapperModel.getIdentityProviderAlias(),
-                user.getUsername(),
-                currentGroups
-                        .stream()
-                        .map(GroupModel::getName)
-                        .collect(Collectors.joining(","))
-        );
-        Set<String> newGroupsNames = newGroupsList
-                .stream()
-                .filter(t -> isEmpty(containsText) || t.contains(containsText))
-                .collect(Collectors.toSet());
-        Set<GroupModel> newGroups = getNewGroups(realm, newGroupsNames, createGroups, discordMapping);
-        logger.debugf("Realm [%s], IdP [%s]: new groups for user [%s]: %s",
-                realm.getName(),
-                mapperModel.getIdentityProviderAlias(),
-                user.getUsername(),
-                newGroups
-                        .stream()
-                        .map(GroupModel::getName)
-                        .collect(Collectors.joining(","))
-        );
+
         Set<GroupModel> removeGroups = getGroupsToBeRemoved(currentGroups, newGroups);
         for (GroupModel group : removeGroups)
             user.leaveGroup(group);
+
         Set<GroupModel> addGroups = getGroupsToBeAdded(currentGroups, newGroups);
         for (GroupModel group : addGroups)
             user.joinGroup(group);
-        logger.debugf("Realm [%s], IdP [%s]: finishing mapping groups for user [%s]",
-                realm.getName(),
-                mapperModel.getIdentityProviderAlias(),
-                user.getUsername());
-    }
-    private Set<GroupModel> getNewGroups(RealmModel realm, Set<String> newGroupsNames, boolean createGroups, Map<String, String> discordMapping) {
-        Set<GroupModel> groups = new HashSet<>();
-        for (String groupName : newGroupsNames) {
-            GroupModel group = getGroupByName(realm, groupName);
-            boolean newlyCreated = false;
-            if (group == null && createGroups) {
-                logger.debugf("Realm [%s]: creating group [%s]",
-                        realm.getName(),
-                        groupName);
-                group = realm.createGroup(groupName);
-                newlyCreated = true;
-            }
-            if (group != null) {
-                String discordRoleIdFromConfig = discordMapping.get(groupName);
-                String current = group.getFirstAttribute("discord_role_id");
-                if (newlyCreated && discordRoleIdFromConfig != null && !discordRoleIdFromConfig.isEmpty()) {
-                    group.setSingleAttribute("discord_role_id", discordRoleIdFromConfig);
-                    logger.debugf("New group [%s] → set discord_role_id = %s (from config)", groupName, discordRoleIdFromConfig);
-                } else if (current != null && !current.isEmpty()) {
-                    logger.debugf("Group [%s] already has discord_role_id = %s", groupName, current);
-                } else if (newlyCreated) {
-                    logger.warnf("Created group [%s] but no discord_role_id mapping found in config", groupName);
-                }
-                groups.add(group);
-            }
-        }
-        return groups;
     }
     private static GroupModel getGroupByName(RealmModel realm, String name) {
         Optional<GroupModel> group = realm.getGroupsStream()
