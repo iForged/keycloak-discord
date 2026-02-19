@@ -121,32 +121,52 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
         }
         return newList;
     }
-    private Map<String, String> getDiscordRoleMapping(IdentityProviderMapperModel mapperModel) {
-        String configValue = mapperModel.getConfig().get(DISCORD_ROLE_MAPPING);
-        if (configValue == null || configValue.trim().isEmpty()) {
+    private Map<String, String> getDiscordRoleMapping(RealmModel realm, String providerAlias) {
+        IdentityProviderModel idpModel = realm.getIdentityProviderByAlias(providerAlias);
+        if (idpModel == null) {
+            logger.warnf("IdentityProvider not found for alias: %s", providerAlias);
             return Collections.emptyMap();
         }
+        
+        String configValue = idpModel.getConfig().get("mappedRoles");
+        if (configValue == null || configValue.trim().isEmpty()) {
+            logger.debug("No mappedRoles config in Discord IdP");
+            return Collections.emptyMap();
+        }
+    
         Map<String, String> mapping = new HashMap<>();
         String[] entries = configValue.split(",");
         for (String entry : entries) {
-            String[] parts = entry.trim().split(":", -1);
+            String trimmed = entry.trim();
+            if (trimmed.isEmpty()) continue;
+            
+            String[] parts = trimmed.split(":", -1);
+            String groupName;
+            String roleId;
+    
             if (parts.length == 3) {
-                String guildId = parts[0].trim();
-                String roleId = parts[1].trim();
-                String groupName = parts[2].trim();
-                if (!groupName.isEmpty() && !roleId.isEmpty()) {
-                    mapping.put(groupName, roleId);
-                    logger.debugf("Parsed mapping: group [%s] → role [%s] (guild [%s])", groupName, roleId, guildId);
-                }
+                roleId = parts[1].trim();
+                groupName = parts[2].trim();
             } else if (parts.length == 2) {
-                String groupName = parts[0].trim();
-                String roleId = parts[1].trim();
-                if (!groupName.isEmpty() && !roleId.isEmpty()) {
-                    mapping.put(groupName, roleId);
-                    logger.debugf("Parsed mapping (2 parts): group [%s] → role [%s]", groupName, roleId);
+                if (trimmed.contains("::")) {
+                    roleId = null;
+                    groupName = parts[1].trim();
+                } else {
+                    roleId = parts[0].trim();
+                    groupName = parts[1].trim();
                 }
             } else {
-                logger.warnf("Invalid mapping entry: [%s] — expected 2 or 3 parts", entry);
+                logger.warnf("Invalid mappedRoles entry: %s", trimmed);
+                continue;
+            }
+    
+            if (!groupName.isEmpty()) {
+                if (roleId != null && !roleId.isEmpty()) {
+                    mapping.put(groupName, roleId);
+                    logger.debugf("Mapping: %s → %s", groupName, roleId);
+                } else {
+                    logger.debugf("Guild membership mapping (no role): %s", groupName);
+                }
             }
         }
         return mapping;
