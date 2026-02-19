@@ -1,3 +1,10 @@
+## [1.2.1](https://github.com/iForged/keycloak-discord/compare/v1.2.0...v1.2.1) (2026-02-19)
+
+
+### Bug Fixes
+
+* **security:** validate Discord email verified flag to prevent account takeover ([e813e53](https://github.com/iForged/keycloak-discord/commit/e813e538c16283463e56e6f37a3d1701a5651660))
+
 ## [1.1.2](https://github.com/iForged/keycloak-discord/compare/v1.1.1...v1.1.2) (2026-02-18)
 
 
