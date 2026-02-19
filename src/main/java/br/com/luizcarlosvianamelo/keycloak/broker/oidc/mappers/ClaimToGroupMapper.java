@@ -107,6 +107,7 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
         if(roles == null) {
             return new ArrayList<>();
         }
+        // convert to string list if not list
         List<String> newList = new ArrayList<>();
         if (!List.class.isAssignableFrom(roles.getClass())) {
             newList.add(roles.toString());
@@ -117,14 +118,33 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
         return newList;
     }
     private void syncGroups(RealmModel realm, UserModel user, IdentityProviderMapperModel mapperModel, BrokeredIdentityContext context) {
+        logger.info("=== DEBUG SYNC START ===");
+        logger.info("=== DEBUG createGroups: " + mapperModel.getConfig().get(CREATE_GROUPS));
+
         boolean createGroups = Boolean.parseBoolean(mapperModel.getConfig().get(CREATE_GROUPS));
-        if (!createGroups) return;
+        if (!createGroups) {
+            logger.info("=== DEBUG createGroups is false, exiting ===");
+            return;
+        }
 
         JsonNode userInfo = (JsonNode) context.getContextData().get(OIDCIdentityProvider.USER_INFO);
-        if (userInfo == null) return;
+        logger.info("=== DEBUG userInfo present: " + (userInfo != null));
 
-        JsonNode guildsNode = userInfo.path("guilds");
-        if (!guildsNode.isArray()) return;
+        if (userInfo != null) {
+            logger.info("=== DEBUG userInfo JSON: " + userInfo.toPrettyString());
+            logger.info("=== DEBUG userInfo guilds node type: " + userInfo.path("guilds").getNodeType());
+            logger.info("=== DEBUG userInfo guilds is array: " + userInfo.path("guilds").isArray());
+            logger.info("=== DEBUG userInfo guilds size: " + userInfo.path("guilds").size());
+        } else {
+            logger.info("=== DEBUG userInfo is null ===");
+            logger.info("=== DEBUG contextData keys: " + context.getContextData().keySet());
+        }
+
+        JsonNode guildsNode = userInfo != null ? userInfo.path("guilds") : null;
+        if (guildsNode == null || !guildsNode.isArray() || guildsNode.size() == 0) {
+            logger.info("=== DEBUG no valid guilds array found, exiting ===");
+            return;
+        }
 
         Set<GroupModel> currentGroups = user.getGroupsStream().collect(Collectors.toSet());
         Set<GroupModel> newGroups = new HashSet<>();
@@ -145,10 +165,12 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
                 if (group == null) {
                     group = realm.createGroup(groupName);
                     newlyCreated = true;
+                    logger.info("=== DEBUG Created group: " + groupName + " for role: " + roleId);
                 }
 
                 if (newlyCreated) {
                     group.setSingleAttribute("discord_role_id", roleId);
+                    logger.info("=== DEBUG Set attribute discord_role_id = " + roleId + " on group " + groupName);
                 }
 
                 newGroups.add(group);
@@ -162,6 +184,8 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
         Set<GroupModel> addGroups = getGroupsToBeAdded(currentGroups, newGroups);
         for (GroupModel group : addGroups)
             user.joinGroup(group);
+
+        logger.info("=== DEBUG SYNC FINISH ===");
     }
     private static GroupModel getGroupByName(RealmModel realm, String name) {
         Optional<GroupModel> group = realm.getGroupsStream()
