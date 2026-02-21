@@ -78,7 +78,10 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
         property.setName(DISCORD_ROLE_MAPPING);
         property.setLabel("Discord Role Mapping");
         property.setHelpText("Map Discord roles to Keycloak groups. Format: <guild_id>:<role_id>:<group_name_in_keycloak> or <guild_id>::<group_name> (for membership in guild without specific role). Use comma as separator for multiple mappings. Example: 123456789:987654321:Moderators,111222333::Members");
-        property.setType(ProviderConfigProperty.STRING_TYPE);
+        property.setType(ProviderConfigProperty.TEXTAREA_TYPE);
+        property.setDefaultValue("");
+        property.getAttributes().put("inputTypeRows", "8");
+        property.getAttributes().put("inputTypeCols", "80");
         CONFIG_PROPERTIES.add(property);
     }
 
