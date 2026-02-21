@@ -1,5 +1,4 @@
 package br.com.luizcarlosvianamelo.keycloak.broker.oidc.mappers;
-
 import org.jboss.logging.Logger;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.keycloak.broker.oidc.KeycloakOIDCIdentityProviderFactory;
@@ -11,9 +10,10 @@ import org.keycloak.broker.provider.BrokeredIdentityContext;
 import org.keycloak.models.*;
 import org.keycloak.provider.ProviderConfigProperty;
 import org.keycloak.social.discord.DiscordIdentityProviderFactory;
-
 import java.util.*;
 import java.util.stream.Collectors;
+import org.keycloak.broker.provider.util.SimpleHttp;
+import javax.ws.rs.core.Response;
 
 /**
  * Class with the implementation of the identity provider mapper that sync the
@@ -42,7 +42,6 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
 
     static {
         ProviderConfigProperty property;
-
         property = new ProviderConfigProperty();
         property.setName(CLAIM);
         property.setLabel("Claim");
@@ -51,14 +50,12 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
                 "'.', i.e. 'address.locality'. To use dot (.) literally, escape it with backslash (\\.)");
         property.setType(ProviderConfigProperty.STRING_TYPE);
         CONFIG_PROPERTIES.add(property);
-
         property = new ProviderConfigProperty();
         property.setName(CONTAINS_TEXT);
         property.setLabel("Contains text");
         property.setHelpText("Only sync groups that contains this text in its name. If empty, sync all groups.");
         property.setType(ProviderConfigProperty.STRING_TYPE);
         CONFIG_PROPERTIES.add(property);
-
         property = new ProviderConfigProperty();
         property.setName(CREATE_GROUPS);
         property.setLabel("Create groups if not exists");
@@ -66,20 +63,31 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
                 "be ignored.");
         property.setType(ProviderConfigProperty.BOOLEAN_TYPE);
         CONFIG_PROPERTIES.add(property);
-
+   
         property = new ProviderConfigProperty();
         property.setName(CLEAR_ROLES_IF_NONE);
         property.setLabel("Clear discord roles if no roles found");
         property.setHelpText("Should Discord roles be cleared out if no roles can be retrieved for example when a user is no longer part of the discord server");
         property.setType(ProviderConfigProperty.BOOLEAN_TYPE);
         CONFIG_PROPERTIES.add(property);
-
         property = new ProviderConfigProperty();
         property.setName(DISCORD_ROLE_MAPPING);
         property.setLabel("Discord Role Mapping");
         property.setHelpText("Map Discord roles to Keycloak groups. Format: <guild_id>:<role_id>:<group_name_in_keycloak> or <guild_id>::<group_name> (for membership in guild without specific role). Use comma as separator for multiple mappings. Example: 123456789:987654321:Moderators,111222333::Members");
         property.setType(ProviderConfigProperty.TEXT_TYPE);
         CONFIG_PROPERTIES.add(property);
+    }
+
+    private static class MappingEntry {
+        String guildId;
+        String roleId;
+        String groupName;
+
+        MappingEntry(String guildId, String roleId, String groupName) {
+            this.guildId = guildId;
+            this.roleId = roleId;
+            this.groupName = groupName;
+        }
     }
 
     // properties --------------------------------------------
@@ -141,63 +149,48 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
         return newList;
     }
 
-    private Map<String, String> getDiscordRoleMapping(IdentityProviderMapperModel mapperModel) {
+    private List<MappingEntry> getDiscordRoleMapping(IdentityProviderMapperModel mapperModel) {
         String configValue = mapperModel.getConfig().get(DISCORD_ROLE_MAPPING);
         if (configValue == null || configValue.trim().isEmpty()) {
             logger.debug("No Discord Role Mapping configured in mapper");
-            return Collections.emptyMap();
+            return Collections.emptyList();
         }
-    
-        logger.infof("Discord Role Mapping — raw value (length = %d): [%s]",
-                configValue.length(),
-                configValue.replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t"));
-    
-        Map<String, String> mapping = new HashMap<>();
-    
+
+        List<MappingEntry> mappings = new ArrayList<>();
+
         String[] lines = configValue.split("\\r?\\n");
-        int lineNumber = 0;
-    
         for (String line : lines) {
-            lineNumber++;
-            String trimmed = line.trim();
-    
-            if (trimmed.isEmpty() || trimmed.startsWith("#")) {
-                logger.debugf("Line %d skipped (empty or comment): [%s]", lineNumber, trimmed);
+            line = line.trim();
+            if (line.isEmpty() || line.startsWith("#")) {
                 continue;
             }
-    
+
             String[] parts = line.split(":", -1);
             if (parts.length != 3) {
-                logger.warnf("Line %d — invalid format (expected 3 parts, got %d): [%s]",
-                        lineNumber, parts.length, line);
+                logger.warnf("Invalid mapping entry (expected 3 parts): %s", line);
                 continue;
             }
-    
-            String guildId   = parts[0].trim();
-            String roleId    = parts[1].trim();
+
+            String guildId = parts[0].trim();
+            String roleId = parts[1].trim();
             String groupName = parts[2].trim();
-    
-            if (guildId.isEmpty() || groupName.isEmpty()) {
-                logger.warnf("Line %d — empty guildId or groupName: [%s]", lineNumber, line);
+
+            if (groupName.isEmpty() || guildId.isEmpty()) {
+                logger.warnf("Invalid mapping entry - empty group or guild: %s", line);
                 continue;
             }
-    
-            mapping.put(groupName, roleId);
-    
-            logger.infof("Line %d — loaded mapping: group=[%s] → roleId=[%s] (guild=[%s])",
-                    lineNumber, groupName, roleId.isEmpty() ? "<empty — guild membership>" : roleId, guildId);
+
+            mappings.add(new MappingEntry(guildId, roleId, groupName));
+            logger.debugf("Loaded mapping: group=%s → roleId=%s (guild=%s)", groupName, roleId, guildId);
         }
-    
-        logger.infof("Discord Role Mapping parsed successfully. Loaded %d entries.", mapping.size());
-    
-        return mapping;
+
+        return mappings;
     }
 
     private void syncGroups(KeycloakSession session, RealmModel realm, UserModel user, IdentityProviderMapperModel mapperModel, BrokeredIdentityContext context) {
         String groupClaimName = mapperModel.getConfig().get(CLAIM);
         String containsText = mapperModel.getConfig().get(CONTAINS_TEXT);
         boolean createGroups = Boolean.parseBoolean(mapperModel.getConfig().get(CREATE_GROUPS));
-
         if (isEmpty(groupClaimName))
             return;
 
@@ -218,18 +211,58 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
                 mapperModel.getIdentityProviderAlias(),
                 user.getUsername());
 
-        Map<String, String> discordMapping = getDiscordRoleMapping(mapperModel);
+        List<MappingEntry> discordMappings = getDiscordRoleMapping(mapperModel);
+
+        Set<String> effectiveGroupNames = new HashSet<>(newGroupsList
+                .stream()
+                .filter(t -> isEmpty(containsText) || t.contains(containsText))
+                .collect(Collectors.toSet()));
+
+        String accessToken = (String) context.getContextData().get("ACCESS_TOKEN");
+        if (accessToken == null) {
+            accessToken = context.getToken() != null ? context.getToken().getToken() : null;
+        }
+
+        if (accessToken != null && !discordMappings.isEmpty()) {
+            for (MappingEntry entry : discordMappings) {
+                try {
+                    String url = "https://discord.com/api/v10/users/@me/guilds/" + entry.guildId + "/member";
+                    JsonNode member = SimpleHttp.doGet(url, session)
+                            .header("Authorization", "Bearer " + accessToken)
+                            .asJson();
+
+                    if (member != null && !member.isMissingNode()) {
+                        boolean hasAccess = false;
+                        if (entry.roleId.isEmpty()) {
+                            hasAccess = true; // просто членство в гильдии
+                        } else {
+                            JsonNode rolesNode = member.get("roles");
+                            if (rolesNode != null && rolesNode.isArray()) {
+                                for (JsonNode role : rolesNode) {
+                                    if (entry.roleId.equals(role.asText())) {
+                                        hasAccess = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+
+                        if (hasAccess) {
+                            effectiveGroupNames.add(entry.groupName);
+                            logger.debugf("Added group from Discord API: %s (guild=%s, role=%s)", entry.groupName, entry.guildId, entry.roleId.isEmpty() ? "membership" : entry.roleId);
+                        }
+                    }
+                } catch (Exception e) {
+                    logger.warnf("Failed to check Discord membership for guild %s: %s", entry.guildId, e.getMessage());
+                }
+            }
+        }
 
         Set<GroupModel> currentGroups = user.getGroupsStream()
                 .filter(g -> isEmpty(containsText) || g.getName().contains(containsText))
                 .collect(Collectors.toSet());
 
-        Set<String> newGroupsNames = newGroupsList
-                .stream()
-                .filter(t -> isEmpty(containsText) || t.contains(containsText))
-                .collect(Collectors.toSet());
-
-        Set<GroupModel> newGroups = getNewGroups(session, realm, newGroupsNames, createGroups, discordMapping);
+        Set<GroupModel> newGroups = getNewGroups(session, realm, effectiveGroupNames, createGroups, discordMappings);
 
         Set<GroupModel> removeGroups = getGroupsToBeRemoved(currentGroups, newGroups);
         for (GroupModel group : removeGroups)
@@ -245,23 +278,23 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
                 user.getUsername());
     }
 
-    private Set<GroupModel> getNewGroups(KeycloakSession session, RealmModel realm, Set<String> newGroupsNames, boolean createGroups, Map<String, String> discordMapping) {
+    private Set<GroupModel> getNewGroups(KeycloakSession session, RealmModel realm, Set<String> newGroupsNames, boolean createGroups, List<MappingEntry> discordMappings) {
         Set<GroupModel> groups = new HashSet<>();
+        Map<String, MappingEntry> mappingByGroup = discordMappings.stream()
+                .collect(Collectors.toMap(e -> e.groupName, e -> e));
 
         for (String groupName : newGroupsNames) {
             GroupModel group = session.groups().getGroupByName(realm, null, groupName);
             boolean newlyCreated = false;
-
             if (group == null && createGroups) {
                 logger.debugf("Realm [%s]: creating group [%s]", realm.getName(), groupName);
                 group = session.groups().createGroup(realm, groupName);
                 newlyCreated = true;
             }
-
             if (group != null) {
-                String roleId = discordMapping.get(groupName);
+                MappingEntry entry = mappingByGroup.get(groupName);
+                String roleId = entry != null ? entry.roleId : null;
                 String current = group.getFirstAttribute("discord_role_id");
-
                 if (newlyCreated) {
                     if (roleId != null && !roleId.isEmpty()) {
                         group.setSingleAttribute("discord_role_id", roleId);
@@ -272,11 +305,9 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
                 } else if (current != null && !current.isEmpty()) {
                     logger.debugf("Group [%s] already has discord_role_id = %s", groupName, current);
                 }
-
                 groups.add(group);
             }
         }
-
         return groups;
     }
 
