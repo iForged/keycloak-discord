@@ -185,20 +185,21 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
                 mapperModel.getIdentityProviderAlias(),
                 user.getUsername());
         List<MappingEntry> discordMappings = getDiscordRoleMapping(mapperModel);
+        FederatedIdentityModel fedIdentity = session.users().getFederatedIdentity(realm, user, mapperModel.getIdentityProviderAlias());
+        String accessToken = null;
+        if (fedIdentity != null) {
+            String storedToken = fedIdentity.getToken();
+            logger.infof("FederatedIdentity exists for user %s, stored token length: %d", user.getUsername(), storedToken != null ? storedToken.length() : 0);
+            if (storedToken != null && storedToken.length() > 0) {
+                accessToken = storedToken;
+            }
+        } else {
+            logger.infof("No FederatedIdentity found for user %s in provider %s", user.getUsername(), mapperModel.getIdentityProviderAlias());
+        }
         Set<String> effectiveGroupNames = new HashSet<>(newGroupsList
                 .stream()
                 .filter(t -> isEmpty(containsText) || t.contains(containsText))
                 .collect(Collectors.toSet()));
-        String accessToken = null;
-        FederatedIdentityModel fedIdentity = session.users().getFederatedIdentity(realm, user, mapperModel.getIdentityProviderAlias());
-        if (fedIdentity != null && fedIdentity.getToken() != null) {
-            try {
-                accessToken = fedIdentity.getToken();
-                logger.debugf("Retrieved external access token from FederatedIdentityModel for user %s", user.getUsername());
-            } catch (Exception e) {
-                logger.warnf("Failed to retrieve stored token for user %s: %s", user.getUsername(), e.getMessage());
-            }
-        }
         if (accessToken != null && !discordMappings.isEmpty()) {
             for (MappingEntry entry : discordMappings) {
                 try {
@@ -230,6 +231,8 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
                     logger.warnf("Failed to check Discord membership for guild %s: %s", entry.guildId, e.getMessage());
                 }
             }
+        } else {
+            logger.infof("No access token available for Discord API check (token null or mappings empty)");
         }
         Set<GroupModel> currentGroups = user.getGroupsStream()
                 .filter(g -> isEmpty(containsText) || g.getName().contains(containsText))
