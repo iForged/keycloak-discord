@@ -207,12 +207,14 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
                     JsonNode member = SimpleHttp.doGet(url, session)
                             .header("Authorization", "Bearer " + accessToken)
                             .asJson();
+                    logger.infof("Discord API response for guild %s: %s", entry.guildId, member);
                     if (member != null && !member.isMissingNode()) {
                         boolean hasAccess = false;
                         if (entry.roleId.isEmpty()) {
                             hasAccess = true;
                         } else {
                             JsonNode rolesNode = member.get("roles");
+                            logger.infof("Roles for guild %s: %s", entry.guildId, rolesNode);
                             if (rolesNode != null && rolesNode.isArray()) {
                                 for (JsonNode role : rolesNode) {
                                     if (entry.roleId.equals(role.asText())) {
@@ -222,6 +224,7 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
                                 }
                             }
                         }
+                        logger.infof("Has access for entry group %s: %s", entry.groupName, hasAccess);
                         if (hasAccess) {
                             effectiveGroupNames.add(entry.groupName);
                             logger.debugf("Added group from Discord API: %s (guild=%s, role=%s)", entry.groupName, entry.guildId, entry.roleId.isEmpty() ? "membership" : entry.roleId);
