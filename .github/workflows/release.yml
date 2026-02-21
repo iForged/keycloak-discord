@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+      - Test-branch
 
 jobs:
   build:
