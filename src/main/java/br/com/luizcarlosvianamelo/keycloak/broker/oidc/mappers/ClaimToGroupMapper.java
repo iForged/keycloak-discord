@@ -13,6 +13,9 @@ import org.keycloak.social.discord.DiscordIdentityProviderFactory;
 import java.util.*;
 import java.util.stream.Collectors;
 import org.keycloak.broker.provider.util.SimpleHttp;
+import org.keycloak.models.FederatedIdentityModel;
+import org.keycloak.util.JsonSerialization;
+
 /**
  * Class with the implementation of the identity provider mapper that sync the
  * user's groups received from an external IdP into the Keycloak groups.
@@ -186,9 +189,15 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
                 .stream()
                 .filter(t -> isEmpty(containsText) || t.contains(containsText))
                 .collect(Collectors.toSet()));
-        String accessToken = (String) context.getContextData().get("ACCESS_TOKEN");
-        if (accessToken == null) {
-            accessToken = context.getToken();
+        String accessToken = null;
+        FederatedIdentityModel fedIdentity = session.users().getFederatedIdentity(realm, user, mapperModel.getIdentityProviderAlias());
+        if (fedIdentity != null && fedIdentity.getToken() != null) {
+            try {
+                accessToken = fedIdentity.getToken();
+                logger.debugf("Retrieved external access token from FederatedIdentityModel for user %s", user.getUsername());
+            } catch (Exception e) {
+                logger.warnf("Failed to retrieve stored token for user %s: %s", user.getUsername(), e.getMessage());
+            }
         }
         if (accessToken != null && !discordMappings.isEmpty()) {
             for (MappingEntry entry : discordMappings) {
@@ -200,7 +209,7 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
                     if (member != null && !member.isMissingNode()) {
                         boolean hasAccess = false;
                         if (entry.roleId.isEmpty()) {
-                            hasAccess = true; // просто членство в гильдии
+                            hasAccess = true;
                         } else {
                             JsonNode rolesNode = member.get("roles");
                             if (rolesNode != null && rolesNode.isArray()) {
