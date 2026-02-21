@@ -13,7 +13,6 @@ import org.keycloak.social.discord.DiscordIdentityProviderFactory;
 import java.util.*;
 import java.util.stream.Collectors;
 import org.keycloak.broker.provider.util.SimpleHttp;
-import javax.ws.rs.core.Response;
 
 /**
  * Class with the implementation of the identity provider mapper that sync the
