@@ -147,36 +147,49 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
             logger.debug("No Discord Role Mapping configured in mapper");
             return Collections.emptyMap();
         }
-
+    
+        logger.infof("Discord Role Mapping — raw value (length = %d): [%s]",
+                configValue.length(),
+                configValue.replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t"));
+    
         Map<String, String> mapping = new HashMap<>();
-
+    
         String[] lines = configValue.split("\\r?\\n");
+        int lineNumber = 0;
+    
         for (String line : lines) {
-            line = line.trim();
-            if (line.isEmpty() || line.startsWith("#")) {
+            lineNumber++;
+            String trimmed = line.trim();
+    
+            if (trimmed.isEmpty() || trimmed.startsWith("#")) {
+                logger.debugf("Line %d skipped (empty or comment): [%s]", lineNumber, trimmed);
                 continue;
             }
-
+    
             String[] parts = line.split(":", -1);
             if (parts.length != 3) {
-                logger.warnf("Invalid mapping entry (expected 3 parts): %s", line);
+                logger.warnf("Line %d — invalid format (expected 3 parts, got %d): [%s]",
+                        lineNumber, parts.length, line);
                 continue;
             }
-
-            String guildId = parts[0].trim();
-            String roleId = parts[1].trim();
+    
+            String guildId   = parts[0].trim();
+            String roleId    = parts[1].trim();
             String groupName = parts[2].trim();
-
-            if (groupName.isEmpty() || guildId.isEmpty()) {
-                logger.warnf("Invalid mapping entry - empty group or guild: %s", line);
+    
+            if (guildId.isEmpty() || groupName.isEmpty()) {
+                logger.warnf("Line %d — empty guildId or groupName: [%s]", lineNumber, line);
                 continue;
             }
-
+    
             mapping.put(groupName, roleId);
-
-            logger.debugf("Loaded mapping: group=%s → roleId=%s (guild=%s)", groupName, roleId, guildId);
+    
+            logger.infof("Line %d — loaded mapping: group=[%s] → roleId=[%s] (guild=[%s])",
+                    lineNumber, groupName, roleId.isEmpty() ? "<empty — guild membership>" : roleId, guildId);
         }
-
+    
+        logger.infof("Discord Role Mapping parsed successfully. Loaded %d entries.", mapping.size());
+    
         return mapping;
     }
 
