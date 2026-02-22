@@ -23,10 +23,13 @@ import org.keycloak.models.IdentityProviderModel;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.provider.ProviderConfigProperty;
 import org.keycloak.provider.ProviderConfigurationBuilder;
+import org.keycloak.util.JsonSerialization;
 
 import java.util.List;
+import java.util.Map;
 
-public class DiscordIdentityProviderFactory extends AbstractIdentityProviderFactory<DiscordIdentityProviderConfig>
+public class DiscordIdentityProviderFactory
+        extends AbstractIdentityProviderFactory<DiscordIdentityProvider>
         implements SocialIdentityProviderFactory {
 
     public static final String PROVIDER_ID = "discord";
@@ -43,11 +46,6 @@ public class DiscordIdentityProviderFactory extends AbstractIdentityProviderFact
             config.setPrompt("none");
         }
         return new DiscordIdentityProvider(session, config);
-    }
-
-    @Override
-    public DiscordIdentityProviderConfig createConfig() {
-        return new DiscordIdentityProviderConfig();
     }
 
     @Override
@@ -77,7 +75,11 @@ public class DiscordIdentityProviderFactory extends AbstractIdentityProviderFact
     }
 
     @Override
-    public DiscordIdentityProviderConfig parseConfig(KeycloakSession session, String json) {
-        return createConfig().fromJson(json);
+    public Map<String, String> parseConfig(KeycloakSession session, String json) {
+        try {
+            return JsonSerialization.readValue(json, Map.class);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to parse provider configuration", e);
+        }
     }
 }
