@@ -101,24 +101,18 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
     }
     public static List<String> getClaimValue(BrokeredIdentityContext context, String claim) {
         JsonNode profileJsonNode = (JsonNode) context.getContextData().get(OIDCIdentityProvider.USER_INFO);
-        if (profileJsonNode == null) {
+        if(roles == null) {
             return new ArrayList<>();
         }
-        JsonNode valueNode = AbstractJsonUserAttributeMapper.getJsonValue(profileJsonNode, claim);
-        if (valueNode == null) {
-            return new ArrayList<>();
+        // convert to string list if not list
+        List<String> newList = new ArrayList<>();
+        if (!List.class.isAssignableFrom(roles.getClass())) {
+            newList.add(roles.toString());
         }
-        List<String> result = new ArrayList<>();
-        if (valueNode.isArray()) {
-            for (JsonNode item : valueNode) {
-                if (item.isTextual()) {
-                    result.add(item.asText());
-                }
-            }
-        } else if (valueNode.isTextual()) {
-            result.add(valueNode.asText());
+        else {
+            newList = (List<String>)roles;
         }
-        return result;
+        return newList;
     }
     private void syncGroups(RealmModel realm, UserModel user, IdentityProviderMapperModel mapperModel, BrokeredIdentityContext context) {
         // check configurations
@@ -190,12 +184,7 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
     private Set<GroupModel> getNewGroups(RealmModel realm, Set<String> newGroupsNames, boolean createGroups, BrokeredIdentityContext context) {
         Set<GroupModel> groups = new HashSet<>();
         
-        Object userInfoObj = context.getContextData().get(OIDCIdentityProvider.USER_INFO);
-        JsonNode profile = null;
-        if (userInfoObj instanceof JsonNode) {
-            profile = (JsonNode) userInfoObj;
-        }
-        
+        JsonNode profile = (JsonNode) context.getContextData().get(OIDCIdentityProvider.USER_INFO);
         JsonNode roleMapping = profile != null ? profile.get("discord_role_mapping") : null;
 
         for (String groupName : newGroupsNames) {
