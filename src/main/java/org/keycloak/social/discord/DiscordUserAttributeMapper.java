@@ -24,6 +24,7 @@ import org.keycloak.broker.oidc.mappers.AbstractJsonUserAttributeMapper;
  *
  * @author dannyAAM
  */
+
 public class DiscordUserAttributeMapper extends AbstractJsonUserAttributeMapper {
 
     private static final String[] cp = new String[]{DiscordIdentityProviderFactory.PROVIDER_ID};
@@ -37,5 +38,4 @@ public class DiscordUserAttributeMapper extends AbstractJsonUserAttributeMapper 
     public String getId() {
         return "discord-user-attribute-mapper";
     }
-
 }
