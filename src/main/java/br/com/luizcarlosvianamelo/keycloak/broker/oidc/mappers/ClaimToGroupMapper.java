@@ -4,6 +4,7 @@ import org.jboss.logging.Logger;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.keycloak.broker.oidc.KeycloakOIDCIdentityProviderFactory;
 import org.keycloak.broker.oidc.OIDCIdentityProviderFactory;
+import org.keycloak.broker.oidc.OIDCIdentityProvider; // исправленный импорт
 import org.keycloak.broker.oidc.mappers.AbstractClaimMapper;
 import org.keycloak.broker.oidc.mappers.AbstractJsonUserAttributeMapper;
 import org.keycloak.broker.provider.BrokeredIdentityContext;
@@ -125,14 +126,15 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
     public static List<String> getClaimValue(BrokeredIdentityContext context, String claim) {
         JsonNode profileJsonNode = (JsonNode) context.getContextData().get(OIDCIdentityProvider.USER_INFO);
         var roles = AbstractJsonUserAttributeMapper.getJsonValue(profileJsonNode, claim);
-        if (roles == null) {
+        if(roles == null) {
             return new ArrayList<>();
         }
         List<String> newList = new ArrayList<>();
         if (!List.class.isAssignableFrom(roles.getClass())) {
             newList.add(roles.toString());
-        } else {
-            newList = (List<String>) roles;
+        }
+        else {
+            newList = (List<String>)roles;
         }
         return newList;
     }
@@ -156,8 +158,8 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
             String guildId = parts[0].trim();
             String roleId = parts[1].trim();
             String groupName = parts[2].trim();
-            if (groupName.isEmpty()) {
-                logger.warnf("Invalid mapping entry - empty group: %s", trimmed);
+            if (groupName.isEmpty() || roleId.isEmpty()) {
+                logger.warnf("Invalid mapping entry - empty group or role: %s", trimmed);
                 continue;
             }
             mapping.put(groupName, roleId);
@@ -230,9 +232,16 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
             }
             if (group != null) {
                 String roleId = discordMapping.get(groupName);
-                if (newlyCreated && roleId != null && !roleId.isEmpty()) {
-                    group.setSingleAttribute("discord_role_id", roleId);
-                    logger.infof("Created group [%s] and set discord_role_id = [%s]", groupName, roleId);
+                String current = group.getFirstAttribute("discord_role_id");
+                if (newlyCreated) {
+                    if (roleId != null && !roleId.isEmpty()) {
+                        group.setSingleAttribute("discord_role_id", roleId);
+                        logger.infof("Created group [%s] and set discord_role_id = [%s]", groupName, roleId);
+                    } else {
+                        logger.warnf("Created group [%s] but no roleId found in mapping for this group", groupName);
+                    }
+                } else if (current != null && !current.isEmpty()) {
+                    logger.debugf("Group [%s] already has discord_role_id = %s", groupName, current);
                 }
                 groups.add(group);
             }
