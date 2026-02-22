@@ -28,9 +28,7 @@ import org.keycloak.broker.oidc.mappers.AbstractJsonUserAttributeMapper;
 import org.keycloak.broker.provider.AuthenticationRequest;
 import org.keycloak.broker.provider.BrokeredIdentityContext;
 import org.keycloak.broker.provider.IdentityBrokerException;
-import org.keycloak.broker.provider.UserAuthenticationIdentityProvider;
 import org.keycloak.broker.provider.util.SimpleHttp;
-import org.keycloak.broker.social.SocialIdentityProvider;
 import org.keycloak.events.EventBuilder;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.services.ErrorPageException;
@@ -43,8 +41,7 @@ import java.util.regex.Pattern;
 
 public class DiscordIdentityProvider
         extends AbstractOAuth2IdentityProvider<DiscordIdentityProviderConfig>
-        implements SocialIdentityProvider<DiscordIdentityProviderConfig>,
-                   UserAuthenticationIdentityProvider<DiscordIdentityProviderConfig> {
+        implements SocialIdentityProvider<DiscordIdentityProviderConfig> {
 
     private static final Logger log = Logger.getLogger(DiscordIdentityProvider.class);
 
@@ -67,10 +64,6 @@ public class DiscordIdentityProvider
         config.setAuthorizationUrl(AUTH_URL);
         config.setTokenUrl(TOKEN_URL);
         config.setUserInfoUrl(PROFILE_URL);
-
-        if (config.isPromptNone()) {
-            config.setPrompt("none");
-        }
     }
 
     @Override
