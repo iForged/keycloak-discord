@@ -18,14 +18,12 @@ package org.keycloak.social.discord;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import jakarta.ws.rs.core.Response;
-import jakarta.ws.rs.core.UriBuilder;
 import org.jboss.logging.Logger;
 import org.keycloak.broker.oidc.AbstractOAuth2IdentityProvider;
 import org.keycloak.broker.oidc.mappers.AbstractJsonUserAttributeMapper;
-import org.keycloak.broker.provider.AuthenticationRequest;
 import org.keycloak.broker.provider.BrokeredIdentityContext;
 import org.keycloak.broker.provider.IdentityBrokerException;
 import org.keycloak.broker.provider.UserAuthenticationIdentityProvider;
@@ -52,9 +50,11 @@ public class DiscordIdentityProvider
     public static final String PROFILE_URL = "https://discord.com/api/users/@me";
     public static final String GROUP_URL = "https://discord.com/api/users/@me/guilds";
     public static final String GUILD_MEMBER_URL = "https://discord.com/api/users/@me/guilds/%s/member";
+
     public static final String DEFAULT_SCOPE = "identify email";
     public static final String GUILDS_SCOPE = "guilds";
     public static final String ROLES_SCOPE = "guilds.members.read";
+
     public static final String USER_PICTURE_URL = "https://cdn.discordapp.com/avatars/%s/%s.%s?size=%s";
 
     private static final Pattern AVATAR_HASH_PATTERN = Pattern.compile("^(a_)?[0-9a-f]{32}$");
@@ -66,28 +66,35 @@ public class DiscordIdentityProvider
         config.setTokenUrl(TOKEN_URL);
         config.setUserInfoUrl(PROFILE_URL);
         if (config.isPromptNone()) {
-            config.setPromptValue("none");
+            config.getAdditionalConfig().put("prompt", "none");
         }
     }
 
+    @Override
     protected boolean supportsExternalExchange() {
         return true;
     }
 
+    @Override
     protected String getProfileEndpointForValidation(EventBuilder event) {
         return PROFILE_URL;
     }
 
+    @Override
     protected BrokeredIdentityContext extractIdentityFromProfile(EventBuilder event, JsonNode profile) {
         BrokeredIdentityContext user = new BrokeredIdentityContext(getJsonProperty(profile, "id"), getConfig());
+
         String username = getJsonProperty(profile, "username");
         String discriminator = getJsonProperty(profile, "discriminator");
         if (!"0".equals(discriminator)) {
             username += "#" + discriminator;
         }
+
         user.setUsername(username);
+
         JsonNode emailNode = profile.get("email");
         JsonNode verifiedNode = profile.get("verified");
+
         if (emailNode != null && !emailNode.isNull()) {
             if (verifiedNode == null || !verifiedNode.asBoolean()) {
                 log.warnf("Discord login attempt with unverified email: %s", emailNode.asText());
@@ -95,9 +102,11 @@ public class DiscordIdentityProvider
             }
             user.setEmail(emailNode.asText());
         }
+
         setUserPicture(user, profile);
         user.setIdp(this);
         AbstractJsonUserAttributeMapper.storeUserProfileForMapper(user, profile, getConfig().getAlias());
+
         return user;
     }
 
@@ -105,21 +114,26 @@ public class DiscordIdentityProvider
         if (user.getId() == null || !DISCORD_ID_PATTERN.matcher(user.getId()).matches()) {
             return;
         }
+
         String avatarHash = getJsonProperty(profile, "avatar");
         if (avatarHash == null || avatarHash.isEmpty() || !AVATAR_HASH_PATTERN.matcher(avatarHash).matches()) {
             return;
         }
+
         String extension = avatarHash.startsWith("a_") ? "gif" : "png";
         String pictureUrl = String.format(USER_PICTURE_URL, user.getId(), avatarHash, extension, "256");
+
         user.setUserAttribute("picture", pictureUrl);
+
         if (profile instanceof ObjectNode objectNode) {
             objectNode.put("picture", pictureUrl);
         }
     }
 
+    @Override
     protected BrokeredIdentityContext doGetFederatedIdentity(String accessToken) {
-        log.debug("doGetFederatedIdentity()");
         JsonNode profile;
+
         try {
             profile = SimpleHttp.doGet(PROFILE_URL, session)
                     .header("Authorization", "Bearer " + accessToken)
@@ -127,14 +141,18 @@ public class DiscordIdentityProvider
         } catch (Exception e) {
             throw new IdentityBrokerException("Could not obtain user profile from Discord.", e);
         }
+
         ArrayNode groups = JsonNodeFactory.instance.arrayNode();
+
         if (getConfig().hasAllowedGuilds()) {
             try {
                 JsonNode guilds = SimpleHttp.doGet(GROUP_URL, session)
                         .header("Authorization", "Bearer " + accessToken)
                         .asJson();
+
                 Set<String> allowedGuilds = getConfig().getAllowedGuildsAsSet();
                 boolean allowed = false;
+
                 for (JsonNode guild : guilds) {
                     String guildId = getJsonProperty(guild, "id");
                     if (allowedGuilds.contains(guildId)) {
@@ -142,6 +160,7 @@ public class DiscordIdentityProvider
                         break;
                     }
                 }
+
                 if (!allowed) {
                     throw new ErrorPageException(session, Response.Status.FORBIDDEN, Messages.INVALID_REQUESTER);
                 }
@@ -149,18 +168,24 @@ public class DiscordIdentityProvider
                 throw new IdentityBrokerException("Could not verify allowed guilds for user.", e);
             }
         }
+
         if (getConfig().hasDiscordRoleMapping()) {
             Map<String, Map<String, String>> mappedRoles = getConfig().getDiscordRoleMappingAsMap();
+
             for (String guildId : mappedRoles.keySet()) {
                 Map<String, String> guildMap = mappedRoles.get(guildId);
+
                 try {
                     JsonNode guildMember = SimpleHttp.doGet(String.format(GUILD_MEMBER_URL, guildId), session)
                             .header("Authorization", "Bearer " + accessToken)
                             .asJson();
+
                     if (!guildMember.has("joined_at")) continue;
+
                     if (guildMap.containsKey("")) {
                         groups.add(guildMap.get(""));
                     }
+
                     JsonNode rolesNode = guildMember.get("roles");
                     if (rolesNode != null && rolesNode.isArray()) {
                         for (JsonNode role : rolesNode) {
@@ -175,38 +200,25 @@ public class DiscordIdentityProvider
                 }
             }
         }
-        if (profile instanceof ObjectNode) {
-            ((ObjectNode) profile).set("discord-groups", groups);
-        }
-        return extractIdentityFromProfile(null, profile);
-    }
 
-    protected boolean isAllowedGuild(String accessToken) {
-        try {
-            JsonNode guilds = SimpleHttp.doGet(GROUP_URL, session)
-                    .header("Authorization", "Bearer " + accessToken)
-                    .asJson();
-            Set<String> allowedGuilds = getConfig().getAllowedGuildsAsSet();
-            for (JsonNode guild : guilds) {
-                String guildId = getJsonProperty(guild, "id");
-                if (allowedGuilds.contains(guildId)) {
-                    return true;
-                }
-            }
-            return false;
-        } catch (Exception e) {
-            throw new IdentityBrokerException("Could not obtain guilds the current user is a member of from Discord.", e);
+        if (profile instanceof ObjectNode objectNode) {
+            objectNode.set("discord-groups", groups);
         }
+
+        return extractIdentityFromProfile(null, profile);
     }
 
     protected String getDefaultScopes() {
         String scopes = DEFAULT_SCOPE;
+
         if (getConfig().hasAllowedGuilds()) {
             scopes += " " + GUILDS_SCOPE;
         }
+
         if (getConfig().hasDiscordRoleMapping()) {
             scopes += " " + ROLES_SCOPE;
         }
+
         return scopes;
     }
 }
