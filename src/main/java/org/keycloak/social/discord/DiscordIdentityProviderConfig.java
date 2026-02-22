@@ -28,7 +28,6 @@ public class DiscordIdentityProviderConfig extends OAuth2IdentityProviderConfig 
     public static final String ALLOWED_GUILDS = "allowedGuilds";
     public static final String DISCORD_ROLE_MAPPING = "discord_role_mapping";
     public static final String PROMPT_NONE = "promptNone";
-    public static final String PROMPT = "prompt";
 
     public DiscordIdentityProviderConfig(IdentityProviderModel model) {
         super(model);
@@ -119,14 +118,6 @@ public class DiscordIdentityProviderConfig extends OAuth2IdentityProviderConfig 
         }
 
         return result;
-    }
-
-    public String getPrompt() {
-        return getConfig().get(PROMPT);
-    }
-
-    public void setPrompt(String prompt) {
-        getConfig().put(PROMPT, prompt);
     }
 
     public boolean isPromptNone() {
