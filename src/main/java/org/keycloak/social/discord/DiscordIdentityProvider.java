@@ -70,17 +70,14 @@ public class DiscordIdentityProvider
         }
     }
 
-    @Override
     protected boolean supportsExternalExchange() {
         return true;
     }
 
-    @Override
     protected String getProfileEndpointForValidation(EventBuilder event) {
         return PROFILE_URL;
     }
 
-    @Override
     protected BrokeredIdentityContext extractIdentityFromProfile(EventBuilder event, JsonNode profile) {
         BrokeredIdentityContext user = new BrokeredIdentityContext(getJsonProperty(profile, "id"), getConfig());
         String username = getJsonProperty(profile, "username");
@@ -112,10 +109,7 @@ public class DiscordIdentityProvider
         if (avatarHash == null || avatarHash.isEmpty() || !AVATAR_HASH_PATTERN.matcher(avatarHash).matches()) {
             return;
         }
-        String extension = "png";
-        if (avatarHash.startsWith("a_")) {
-            extension = "gif";
-        }
+        String extension = avatarHash.startsWith("a_") ? "gif" : "png";
         String pictureUrl = String.format(USER_PICTURE_URL, user.getId(), avatarHash, extension, "256");
         user.setUserAttribute("picture", pictureUrl);
         if (profile instanceof ObjectNode objectNode) {
@@ -187,7 +181,6 @@ public class DiscordIdentityProvider
         return extractIdentityFromProfile(null, profile);
     }
 
-    @Override
     protected boolean isAllowedGuild(String accessToken) {
         try {
             JsonNode guilds = SimpleHttp.doGet(GROUP_URL, session)
@@ -206,7 +199,6 @@ public class DiscordIdentityProvider
         }
     }
 
-    @Override
     protected String getDefaultScopes() {
         String scopes = DEFAULT_SCOPE;
         if (getConfig().hasAllowedGuilds()) {
@@ -218,7 +210,6 @@ public class DiscordIdentityProvider
         return scopes;
     }
 
-    @Override
     protected UriBuilder createAuthorizationUrl(AuthenticationRequest request) {
         UriBuilder uriBuilder = super.createAuthorizationUrl(request);
         String prompt = getConfig().getPrompt();
