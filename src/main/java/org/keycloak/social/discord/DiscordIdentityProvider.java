@@ -94,16 +94,16 @@ public class DiscordIdentityProvider
         }
 
         user.setUsername(username);
-        
+
         JsonNode emailNode = profile.get("email");
         JsonNode verifiedNode = profile.get("verified");
-        
+
         if (emailNode != null && !emailNode.isNull()) {
             if (verifiedNode == null || !verifiedNode.asBoolean()) {
                 log.warnf("Discord login attempt with unverified email: %s", emailNode.asText());
                 throw new IdentityBrokerException("Discord account email is not verified");
             }
-        
+
             user.setEmail(emailNode.asText());
         }
 
@@ -142,39 +142,63 @@ public class DiscordIdentityProvider
     @Override
     protected BrokeredIdentityContext doGetFederatedIdentity(String accessToken) {
         log.debug("doGetFederatedIdentity()");
+
         JsonNode profile;
         try {
             profile = SimpleHttp.doGet(PROFILE_URL, session)
                     .header("Authorization", "Bearer " + accessToken)
                     .asJson();
         } catch (Exception e) {
-            throw new IdentityBrokerException("Could not obtain user profile from discord.", e);
+            throw new IdentityBrokerException("Could not obtain user profile from Discord.", e);
         }
+
+        ArrayNode groups = JsonNodeFactory.instance.arrayNode();
+
+        // Проверка допустимых гильдий
         if (getConfig().hasAllowedGuilds()) {
-            if (!isAllowedGuild(accessToken)) {
-                throw new ErrorPageException(session, Response.Status.FORBIDDEN, Messages.INVALID_REQUESTER);
+            try {
+                JsonNode guilds = SimpleHttp.doGet(GROUP_URL, session)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .asJson();
+
+                Set<String> allowedGuilds = getConfig().getAllowedGuildsAsSet();
+                boolean allowed = false;
+                for (JsonNode guild : guilds) {
+                    String guildId = getJsonProperty(guild, "id");
+                    if (allowedGuilds.contains(guildId)) {
+                        allowed = true;
+                        break;
+                    }
+                }
+                if (!allowed) {
+                    throw new ErrorPageException(session, Response.Status.FORBIDDEN, Messages.INVALID_REQUESTER);
+                }
+            } catch (Exception e) {
+                throw new IdentityBrokerException("Could not verify allowed guilds for user.", e);
             }
         }
-        ArrayNode groups = JsonNodeFactory.instance.arrayNode();
-        if (getConfig().hasMappedRoles()) {
-            Map<String, HashMap<String, String>> mappedRoles = getConfig().getMappedRolesAsMap();
+
+        if (getConfig().hasDiscordRoleMapping()) {
+            Map<String, Map<String, String>> mappedRoles = getConfig().getDiscordRoleMappingAsMap();
             for (String guildId : mappedRoles.keySet()) {
-                JsonNode guildMember;
+                Map<String, String> guildMap = mappedRoles.get(guildId);
                 try {
-                    guildMember = SimpleHttp.doGet(String.format(GUILD_MEMBER_URL, guildId), session)
+                    JsonNode guildMember = SimpleHttp.doGet(String.format(GUILD_MEMBER_URL, guildId), session)
                             .header("Authorization", "Bearer " + accessToken)
                             .asJson();
-                    if (guildMember.has("joined_at")) {
-                        if (mappedRoles.get(guildId).containsKey(guildId)) {
-                            groups.add(mappedRoles.get(guildId).get(guildId));
-                        }
-                        JsonNode rolesNode = guildMember.get("roles");
-                        if (rolesNode != null && rolesNode.isArray()) {
-                            for (JsonNode role : rolesNode) {
-                                String roleId = role.textValue();
-                                if (mappedRoles.get(guildId).containsKey(roleId)) {
-                                    groups.add(mappedRoles.get(guildId).get(roleId));
-                                }
+
+                    if (!guildMember.has("joined_at")) continue;
+
+                    if (guildMap.containsKey("")) {
+                        groups.add(guildMap.get(""));
+                    }
+
+                    JsonNode rolesNode = guildMember.get("roles");
+                    if (rolesNode != null && rolesNode.isArray()) {
+                        for (JsonNode role : rolesNode) {
+                            String roleId = role.asText();
+                            if (guildMap.containsKey(roleId)) {
+                                groups.add(guildMap.get(roleId));
                             }
                         }
                     }
@@ -183,12 +207,15 @@ public class DiscordIdentityProvider
                 }
             }
         }
+
         if (profile instanceof ObjectNode) {
             ((ObjectNode) profile).set("discord-groups", groups);
         }
+
         return extractIdentityFromProfile(null, profile);
     }
 
+    @Override
     protected boolean isAllowedGuild(String accessToken) {
         try {
             JsonNode guilds = SimpleHttp.doGet(GROUP_URL, session)
@@ -203,7 +230,7 @@ public class DiscordIdentityProvider
             }
             return false;
         } catch (Exception e) {
-            throw new IdentityBrokerException("Could not obtain guilds the current user is a member of from discord.", e);
+            throw new IdentityBrokerException("Could not obtain guilds the current user is a member of from Discord.", e);
         }
     }
 
