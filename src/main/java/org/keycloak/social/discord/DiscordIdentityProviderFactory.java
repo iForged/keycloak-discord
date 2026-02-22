@@ -26,6 +26,9 @@ import org.keycloak.provider.ProviderConfigurationBuilder;
 
 import java.util.List;
 
+/**
+ * @author <a href="mailto:wadahiro@gmail.com">Hiroyuki Wada</a>
+ */
 public class DiscordIdentityProviderFactory extends AbstractIdentityProviderFactory<DiscordIdentityProvider>
         implements SocialIdentityProviderFactory<DiscordIdentityProvider> {
 
@@ -38,11 +41,7 @@ public class DiscordIdentityProviderFactory extends AbstractIdentityProviderFact
 
     @Override
     public DiscordIdentityProvider create(KeycloakSession session, IdentityProviderModel model) {
-        DiscordIdentityProviderConfig config = new DiscordIdentityProviderConfig(model);
-        if (config.isPromptNone()) {
-            config.setPrompt("none");
-        }
-        return new DiscordIdentityProvider(session, config);
+        return new DiscordIdentityProvider(session, new DiscordIdentityProviderConfig(model));
     }
 
     @Override
@@ -54,34 +53,22 @@ public class DiscordIdentityProviderFactory extends AbstractIdentityProviderFact
     public List<ProviderConfigProperty> getConfigProperties() {
         return ProviderConfigurationBuilder.create()
                 .property()
-                .name(DiscordIdentityProviderConfig.ALLOWED_GUILDS)
+                .name("allowedGuilds")
                 .type(ProviderConfigProperty.STRING_TYPE)
                 .label("Guild Id(s) to allow federation")
                 .helpText("If you want to allow federation for specific guild, enter the guild id. Please use a comma as a separator for multiple guilds.")
                 .add()
                 .property()
-                .name(DiscordIdentityProviderConfig.DISCORD_ROLE_MAPPING)
-                .type(ProviderConfigProperty.TEXT_TYPE)
-                .label("Discord Role Mapping")
-                .helpText("Multiline mapping: guild_id:role_id:group_name_in_keycloak\n" +
-                          "Examples:\n" +
-                          "1307843121031282738:1308020497815965727:DiscordAdmin\n" +
-                          "1307843121031282738:1308020875131486208:Test\n" +
-                          "1307843121031282738::GuildMember   ← membership without role check\n" +
-                          "\n# Lines starting with # are comments\nEmpty lines ignored")
-                .add()
-                .property()
-                .name(DiscordIdentityProviderConfig.PROMPT)
+                .name("mappedRoles")
                 .type(ProviderConfigProperty.STRING_TYPE)
-                .label("Prompt")
-                .helpText("OAuth2 prompt parameter to send to Discord (e.g., 'none' to skip consent screen if scopes are already authorized). Leave empty to use default behavior.")
+                .label("Discord Roles mapping")
+                .helpText("Map Discord roles to Keycloak groups. The expected format is '<guild_id>:<role_id>:<group_name>'. Use a comma as a separator for multiple mappings.")
                 .add()
                 .property()
-                .name(DiscordIdentityProviderConfig.PROMPT_NONE)
-                .type(ProviderConfigProperty.BOOLEAN_TYPE)
-                .label("Skip Discord prompt (prompt=none)")
-                .helpText("If enabled, adds 'prompt=none' to the authorization URL. This skips the Discord consent screen for users who have already authorized the application.")
-                .defaultValue(Boolean.FALSE)
+                .name("promptNone")
+                .type("boolean")
+                .label("Skip Discord prompt")
+                .helpText("Should Discord skip the prompt for users that have already granted access to our application?")
                 .add()
                 .build();
     }
