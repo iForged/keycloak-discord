@@ -55,7 +55,6 @@ public class DiscordIdentityProvider
     public static final String DEFAULT_SCOPE = "identify email";
     public static final String GUILDS_SCOPE = "guilds";
     public static final String ROLES_SCOPE = "guilds.members.read";
-
     public static final String USER_PICTURE_URL = "https://cdn.discordapp.com/avatars/%s/%s.%s?size=%s";
 
     private static final Pattern AVATAR_HASH_PATTERN = Pattern.compile("^(a_)?[0-9a-f]{32}$");
@@ -66,7 +65,6 @@ public class DiscordIdentityProvider
         config.setAuthorizationUrl(AUTH_URL);
         config.setTokenUrl(TOKEN_URL);
         config.setUserInfoUrl(PROFILE_URL);
-
         if (config.isPromptNone()) {
             config.setPrompt("none");
         }
@@ -85,18 +83,14 @@ public class DiscordIdentityProvider
     @Override
     protected BrokeredIdentityContext extractIdentityFromProfile(EventBuilder event, JsonNode profile) {
         BrokeredIdentityContext user = new BrokeredIdentityContext(getJsonProperty(profile, "id"), getConfig());
-
         String username = getJsonProperty(profile, "username");
         String discriminator = getJsonProperty(profile, "discriminator");
         if (!"0".equals(discriminator)) {
             username += "#" + discriminator;
         }
-
         user.setUsername(username);
-
         JsonNode emailNode = profile.get("email");
         JsonNode verifiedNode = profile.get("verified");
-
         if (emailNode != null && !emailNode.isNull()) {
             if (verifiedNode == null || !verifiedNode.asBoolean()) {
                 log.warnf("Discord login attempt with unverified email: %s", emailNode.asText());
@@ -104,12 +98,9 @@ public class DiscordIdentityProvider
             }
             user.setEmail(emailNode.asText());
         }
-
         setUserPicture(user, profile);
-
         user.setIdp(this);
         AbstractJsonUserAttributeMapper.storeUserProfileForMapper(user, profile, getConfig().getAlias());
-
         return user;
     }
 
@@ -117,20 +108,16 @@ public class DiscordIdentityProvider
         if (user.getId() == null || !DISCORD_ID_PATTERN.matcher(user.getId()).matches()) {
             return;
         }
-
         String avatarHash = getJsonProperty(profile, "avatar");
         if (avatarHash == null || avatarHash.isEmpty() || !AVATAR_HASH_PATTERN.matcher(avatarHash).matches()) {
             return;
         }
-
         String extension = "png";
         if (avatarHash.startsWith("a_")) {
             extension = "gif";
         }
-
         String pictureUrl = String.format(USER_PICTURE_URL, user.getId(), avatarHash, extension, "256");
         user.setUserAttribute("picture", pictureUrl);
-
         if (profile instanceof ObjectNode objectNode) {
             objectNode.put("picture", pictureUrl);
         }
@@ -138,7 +125,6 @@ public class DiscordIdentityProvider
 
     protected BrokeredIdentityContext doGetFederatedIdentity(String accessToken) {
         log.debug("doGetFederatedIdentity()");
-
         JsonNode profile;
         try {
             profile = SimpleHttp.doGet(PROFILE_URL, session)
@@ -147,15 +133,12 @@ public class DiscordIdentityProvider
         } catch (Exception e) {
             throw new IdentityBrokerException("Could not obtain user profile from Discord.", e);
         }
-
         ArrayNode groups = JsonNodeFactory.instance.arrayNode();
-
         if (getConfig().hasAllowedGuilds()) {
             try {
                 JsonNode guilds = SimpleHttp.doGet(GROUP_URL, session)
                         .header("Authorization", "Bearer " + accessToken)
                         .asJson();
-
                 Set<String> allowedGuilds = getConfig().getAllowedGuildsAsSet();
                 boolean allowed = false;
                 for (JsonNode guild : guilds) {
@@ -172,7 +155,6 @@ public class DiscordIdentityProvider
                 throw new IdentityBrokerException("Could not verify allowed guilds for user.", e);
             }
         }
-
         if (getConfig().hasDiscordRoleMapping()) {
             Map<String, Map<String, String>> mappedRoles = getConfig().getDiscordRoleMappingAsMap();
             for (String guildId : mappedRoles.keySet()) {
@@ -181,13 +163,10 @@ public class DiscordIdentityProvider
                     JsonNode guildMember = SimpleHttp.doGet(String.format(GUILD_MEMBER_URL, guildId), session)
                             .header("Authorization", "Bearer " + accessToken)
                             .asJson();
-
                     if (!guildMember.has("joined_at")) continue;
-
                     if (guildMap.containsKey("")) {
                         groups.add(guildMap.get(""));
                     }
-
                     JsonNode rolesNode = guildMember.get("roles");
                     if (rolesNode != null && rolesNode.isArray()) {
                         for (JsonNode role : rolesNode) {
@@ -202,11 +181,9 @@ public class DiscordIdentityProvider
                 }
             }
         }
-
         if (profile instanceof ObjectNode) {
             ((ObjectNode) profile).set("discord-groups", groups);
         }
-
         return extractIdentityFromProfile(null, profile);
     }
 
@@ -235,7 +212,7 @@ public class DiscordIdentityProvider
         if (getConfig().hasAllowedGuilds()) {
             scopes += " " + GUILDS_SCOPE;
         }
-        if (getConfig().hasDiscordRoleMapping())
+        if (getConfig().hasDiscordRoleMapping()) {
             scopes += " " + ROLES_SCOPE;
         }
         return scopes;
