@@ -37,4 +37,5 @@ public class DiscordUserAttributeMapper extends AbstractJsonUserAttributeMapper 
     public String getId() {
         return "discord-user-attribute-mapper";
     }
+
 }
