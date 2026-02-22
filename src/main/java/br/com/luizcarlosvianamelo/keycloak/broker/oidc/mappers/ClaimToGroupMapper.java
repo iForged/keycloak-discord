@@ -40,6 +40,7 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
 
     static {
         ProviderConfigProperty property;
+
         property = new ProviderConfigProperty();
         property.setName(CLAIM);
         property.setLabel("Claim");
@@ -74,13 +75,8 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
         property = new ProviderConfigProperty();
         property.setName(DISCORD_ROLE_MAPPING);
         property.setLabel("Discord Role Mapping");
-        property.setHelpText("Map Discord roles to Keycloak groups.\n" +
-                "Use '#' for comments.\n" +
-                "Format per line: <guild_id>:<role_id>:<group_name_in_keycloak>\n" +
-                "Example:\n" +
-                "# comment\n" +
-                "123456789:987654321:Moderators\n" +
-                "111222333:444555666:Members");
+        property.setHelpText("Map Discord roles to Keycloak groups. Each line should be in the format: " +
+                "guild_id:role_id:keycloak_group_name. Lines starting with # are ignored as comments.");
         property.setType(ProviderConfigProperty.TEXT_TYPE);
         CONFIG_PROPERTIES.add(property);
     }
@@ -118,28 +114,30 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
 
     // actions -----------------------------------------------
     @Override
-    public void importNewUser(KeycloakSession session, RealmModel realm, UserModel user, IdentityProviderMapperModel mapperModel, BrokeredIdentityContext context) {
+    public void importNewUser(KeycloakSession session, RealmModel realm, UserModel user,
+                              IdentityProviderMapperModel mapperModel, BrokeredIdentityContext context) {
         super.importNewUser(session, realm, user, mapperModel, context);
         this.syncGroups(session, realm, user, mapperModel, context);
     }
 
     @Override
-    public void updateBrokeredUser(KeycloakSession session, RealmModel realm, UserModel user, IdentityProviderMapperModel mapperModel, BrokeredIdentityContext context) {
+    public void updateBrokeredUser(KeycloakSession session, RealmModel realm, UserModel user,
+                                   IdentityProviderMapperModel mapperModel, BrokeredIdentityContext context) {
         this.syncGroups(session, realm, user, mapperModel, context);
     }
 
     public static List<String> getClaimValue(BrokeredIdentityContext context, String claim) {
         JsonNode profileJsonNode = (JsonNode) context.getContextData().get("userInfo");
+        logger.infof("User profile JSON: %s", profileJsonNode);
         var roles = AbstractJsonUserAttributeMapper.getJsonValue(profileJsonNode, claim);
-        if(roles == null) {
+        if (roles == null) {
             return new ArrayList<>();
         }
         List<String> newList = new ArrayList<>();
         if (!List.class.isAssignableFrom(roles.getClass())) {
             newList.add(roles.toString());
-        }
-        else {
-            newList = (List<String>)roles;
+        } else {
+            newList = (List<String>) roles;
         }
         return newList;
     }
@@ -150,30 +148,32 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
             logger.debug("No Discord Role Mapping configured in mapper");
             return Collections.emptyMap();
         }
+
         Map<String, String> mapping = new HashMap<>();
-        String[] lines = configValue.split("\\r?\\n");
+        String[] lines = configValue.split("\n");
         for (String line : lines) {
-            String trimmed = line.trim();
-            if (trimmed.isEmpty() || trimmed.startsWith("#")) continue;
-            String[] parts = trimmed.split(":", -1);
+            line = line.trim();
+            if (line.isEmpty() || line.startsWith("#")) continue; // пропускаем комментарии
+            String[] parts = line.split(":", -1);
             if (parts.length != 3) {
-                logger.warnf("Invalid mapping entry (expected 3 parts): %s", trimmed);
+                logger.warnf("Invalid mapping entry (expected 3 parts): %s", line);
                 continue;
             }
             String guildId = parts[0].trim();
             String roleId = parts[1].trim();
             String groupName = parts[2].trim();
             if (groupName.isEmpty() || roleId.isEmpty()) {
-                logger.warnf("Invalid mapping entry - empty group or role: %s", trimmed);
+                logger.warnf("Invalid mapping entry - empty group or role: %s", line);
                 continue;
             }
             mapping.put(groupName, roleId);
-            logger.debugf("Loaded mapping: group=%s → roleId=%s (guild=%s)", groupName, roleId, guildId);
+            logger.infof("Loaded mapping: group=%s → roleId=%s (guild=%s)", groupName, roleId, guildId);
         }
         return mapping;
     }
 
-    private void syncGroups(KeycloakSession session, RealmModel realm, UserModel user, IdentityProviderMapperModel mapperModel, BrokeredIdentityContext context) {
+    private void syncGroups(KeycloakSession session, RealmModel realm, UserModel user,
+                            IdentityProviderMapperModel mapperModel, BrokeredIdentityContext context) {
         String groupClaimName = mapperModel.getConfig().get(CLAIM);
         String containsText = mapperModel.getConfig().get(CONTAINS_TEXT);
         boolean createGroups = Boolean.parseBoolean(mapperModel.getConfig().get(CREATE_GROUPS));
@@ -193,7 +193,7 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
             return;
         }
 
-        logger.debugf("Realm [%s], IdP [%s]: starting mapping groups for user [%s]",
+        logger.infof("Realm [%s], IdP [%s]: starting mapping groups for user [%s]",
                 realm.getName(),
                 mapperModel.getIdentityProviderAlias(),
                 user.getUsername());
@@ -212,26 +212,31 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
         Set<GroupModel> newGroups = getNewGroups(session, realm, newGroupsNames, createGroups, discordMapping);
 
         Set<GroupModel> removeGroups = getGroupsToBeRemoved(currentGroups, newGroups);
-        for (GroupModel group : removeGroups)
+        for (GroupModel group : removeGroups) {
             user.leaveGroup(group);
+            logger.infof("Removed user [%s] from group [%s]", user.getUsername(), group.getName());
+        }
 
         Set<GroupModel> addGroups = getGroupsToBeAdded(currentGroups, newGroups);
-        for (GroupModel group : addGroups)
+        for (GroupModel group : addGroups) {
             user.joinGroup(group);
+            logger.infof("Added user [%s] to group [%s]", user.getUsername(), group.getName());
+        }
 
-        logger.debugf("Realm [%s], IdP [%s]: finishing mapping groups for user [%s]",
+        logger.infof("Realm [%s], IdP [%s]: finished mapping groups for user [%s]",
                 realm.getName(),
                 mapperModel.getIdentityProviderAlias(),
                 user.getUsername());
     }
 
-    private Set<GroupModel> getNewGroups(KeycloakSession session, RealmModel realm, Set<String> newGroupsNames, boolean createGroups, Map<String, String> discordMapping) {
+    private Set<GroupModel> getNewGroups(KeycloakSession session, RealmModel realm,
+                                         Set<String> newGroupsNames, boolean createGroups, Map<String, String> discordMapping) {
         Set<GroupModel> groups = new HashSet<>();
         for (String groupName : newGroupsNames) {
             GroupModel group = session.groups().getGroupByName(realm, null, groupName);
             boolean newlyCreated = false;
             if (group == null && createGroups) {
-                logger.debugf("Realm [%s]: creating group [%s]", realm.getName(), groupName);
+                logger.infof("Realm [%s]: creating group [%s]", realm.getName(), groupName);
                 group = session.groups().createGroup(realm, groupName);
                 newlyCreated = true;
             }
