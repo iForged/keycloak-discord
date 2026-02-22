@@ -66,7 +66,7 @@ public class DiscordIdentityProvider
         config.setTokenUrl(TOKEN_URL);
         config.setUserInfoUrl(PROFILE_URL);
         if (config.isPromptNone()) {
-            config.setPrompt("none");
+            config.setPromptValue("none");
         }
     }
 
