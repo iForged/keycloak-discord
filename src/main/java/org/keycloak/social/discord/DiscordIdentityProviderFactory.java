@@ -26,7 +26,7 @@ import org.keycloak.provider.ProviderConfigurationBuilder;
 
 import java.util.List;
 
-public class DiscordIdentityProviderFactory extends AbstractIdentityProviderFactory<DiscordIdentityProvider>
+public class DiscordIdentityProviderFactory extends AbstractIdentityProviderFactory<DiscordIdentityProvider, DiscordIdentityProviderConfig>
         implements SocialIdentityProviderFactory<DiscordIdentityProvider> {
 
     public static final String PROVIDER_ID = "discord";
