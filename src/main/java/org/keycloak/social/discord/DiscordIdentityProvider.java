@@ -209,14 +209,4 @@ public class DiscordIdentityProvider
         }
         return scopes;
     }
-
-    protected UriBuilder createAuthorizationUrl(AuthenticationRequest request) {
-        UriBuilder uriBuilder = super.createAuthorizationUrl(request);
-        String prompt = getConfig().getPrompt();
-        if (prompt != null && !prompt.trim().isEmpty()) {
-            uriBuilder.queryParam("prompt", prompt.trim());
-            log.debugf("Added prompt=%s to Discord authorization URL", prompt.trim());
-        }
-        return uriBuilder;
-    }
 }
