@@ -26,8 +26,8 @@ import org.keycloak.provider.ProviderConfigurationBuilder;
 
 import java.util.List;
 
-public class DiscordIdentityProviderFactory extends AbstractIdentityProviderFactory<DiscordIdentityProvider, DiscordIdentityProviderConfig>
-        implements SocialIdentityProviderFactory<DiscordIdentityProvider> {
+public class DiscordIdentityProviderFactory extends AbstractIdentityProviderFactory<DiscordIdentityProviderConfig>
+        implements SocialIdentityProviderFactory {
 
     public static final String PROVIDER_ID = "discord";
 
@@ -74,5 +74,10 @@ public class DiscordIdentityProviderFactory extends AbstractIdentityProviderFact
     @Override
     public String getId() {
         return PROVIDER_ID;
+    }
+
+    @Override
+    public DiscordIdentityProviderConfig parseConfig(KeycloakSession session, String json) {
+        return createConfig().fromJson(json);
     }
 }
