@@ -59,6 +59,7 @@ public class DiscordIdentityProviderFactory extends AbstractIdentityProviderFact
                 .label("Guild Id(s) to allow federation")
                 .helpText("If you want to allow federation for specific guild, enter the guild id. Please use a comma as a separator for multiple guilds.")
                 .add()
+                
                 .property()
                 .name(DiscordIdentityProviderConfig.DISCORD_ROLE_MAPPING)
                 .type(ProviderConfigProperty.TEXT_TYPE)
@@ -70,12 +71,7 @@ public class DiscordIdentityProviderFactory extends AbstractIdentityProviderFact
                           "1307843121031282738::GuildMember   ← membership without role check\n" +
                           "\n# Lines starting with # are comments\nEmpty lines ignored")
                 .add()
-                .property()
-                .name(DiscordIdentityProviderConfig.PROMPT)
-                .type(ProviderConfigProperty.STRING_TYPE)
-                .label("Prompt")
-                .helpText("OAuth2 prompt parameter to send to Discord (e.g., 'none' to skip consent screen if scopes are already authorized). Leave empty to use default behavior.")
-                .add()
+                
                 .property()
                 .name(DiscordIdentityProviderConfig.PROMPT_NONE)
                 .type(ProviderConfigProperty.BOOLEAN_TYPE)
@@ -83,6 +79,7 @@ public class DiscordIdentityProviderFactory extends AbstractIdentityProviderFact
                 .helpText("If enabled, adds 'prompt=none' to the authorization URL. This skips the Discord consent screen for users who have already authorized the application.")
                 .defaultValue(Boolean.FALSE)
                 .add()
+                
                 .build();
     }
 
