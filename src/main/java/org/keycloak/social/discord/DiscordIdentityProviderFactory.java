@@ -31,26 +31,22 @@ public class DiscordIdentityProviderFactory extends AbstractIdentityProviderFact
 
     public static final String PROVIDER_ID = "discord";
 
-    @Override
     public String getName() {
         return "Discord";
     }
 
-    @Override
     public DiscordIdentityProvider create(KeycloakSession session, IdentityProviderModel model) {
         DiscordIdentityProviderConfig config = new DiscordIdentityProviderConfig(model);
         if (config.isPromptNone()) {
-            config.getAdditionalConfig().put("prompt", "none");
+            config.getConfig().put("prompt", "none");
         }
         return new DiscordIdentityProvider(session, config);
     }
 
-    @Override
     public DiscordIdentityProviderConfig createConfig() {
         return new DiscordIdentityProviderConfig();
     }
 
-    @Override
     public List<ProviderConfigProperty> getConfigProperties() {
         return ProviderConfigurationBuilder.create()
                 .property()
@@ -80,7 +76,6 @@ public class DiscordIdentityProviderFactory extends AbstractIdentityProviderFact
                 .build();
     }
 
-    @Override
     public String getId() {
         return PROVIDER_ID;
     }
