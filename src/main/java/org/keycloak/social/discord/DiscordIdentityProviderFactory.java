@@ -49,6 +49,11 @@ public class DiscordIdentityProviderFactory
     }
 
     @Override
+    public Map<String, String> createConfig() {
+        return Map.of();
+    }
+
+    @Override
     public List<ProviderConfigProperty> getConfigProperties() {
         return ProviderConfigurationBuilder.create()
                 .property()
