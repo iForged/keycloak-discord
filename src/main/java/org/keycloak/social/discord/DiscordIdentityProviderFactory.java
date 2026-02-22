@@ -23,14 +23,11 @@ import org.keycloak.models.IdentityProviderModel;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.provider.ProviderConfigProperty;
 import org.keycloak.provider.ProviderConfigurationBuilder;
-import org.keycloak.util.JsonSerialization;
 
 import java.util.List;
-import java.util.Map;
 
-public class DiscordIdentityProviderFactory
-        extends AbstractIdentityProviderFactory<DiscordIdentityProvider>
-        implements SocialIdentityProviderFactory {
+public class DiscordIdentityProviderFactory extends AbstractIdentityProviderFactory<DiscordIdentityProvider>
+        implements SocialIdentityProviderFactory<DiscordIdentityProvider> {
 
     public static final String PROVIDER_ID = "discord";
 
@@ -49,8 +46,8 @@ public class DiscordIdentityProviderFactory
     }
 
     @Override
-    public Map<String, String> createConfig() {
-        return Map.of();
+    public DiscordIdentityProviderConfig createConfig() {
+        return new DiscordIdentityProviderConfig();
     }
 
     @Override
@@ -61,6 +58,20 @@ public class DiscordIdentityProviderFactory
                 .type(ProviderConfigProperty.STRING_TYPE)
                 .label("Guild Id(s) to allow federation")
                 .helpText("If you want to allow federation for specific guild, enter the guild id. Please use a comma as a separator for multiple guilds.")
+                .add()
+
+                .property()
+                .name(DiscordIdentityProviderConfig.PROMPT)
+                .type(ProviderConfigProperty.STRING_TYPE)
+                .label("Prompt")
+                .helpText("OAuth2 prompt parameter to send to Discord (e.g., 'none' to skip consent screen if scopes are already authorized). Leave empty to use default behavior.")
+                .add()
+
+                .property()
+                .name(DiscordIdentityProviderConfig.MAPPED_ROLES)
+                .type(ProviderConfigProperty.STRING_TYPE)
+                .label("Discord Roles mapping")
+                .helpText("Map Discord roles to Keycloak groups. Format: <guild_id>:<role_id>:<group_name_in_keycloak> or <guild_id>::<group_name> (for membership in guild without specific role). Use comma as separator for multiple mappings. Example: 123456789:987654321:Moderators,111222333::Members")
                 .add()
 
                 .property()
@@ -77,14 +88,5 @@ public class DiscordIdentityProviderFactory
     @Override
     public String getId() {
         return PROVIDER_ID;
-    }
-
-    @Override
-    public Map<String, String> parseConfig(KeycloakSession session, String json) {
-        try {
-            return JsonSerialization.readValue(json, Map.class);
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to parse provider configuration", e);
-        }
     }
 }
