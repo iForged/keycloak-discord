@@ -2,6 +2,7 @@ package br.com.luizcarlosvianamelo.keycloak.broker.oidc.mappers;
 
 import org.jboss.logging.Logger;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import org.keycloak.broker.oidc.KeycloakOIDCIdentityProviderFactory;
 import org.keycloak.broker.oidc.OIDCIdentityProviderFactory;
 import org.keycloak.broker.oidc.mappers.AbstractClaimMapper;
@@ -161,7 +162,8 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
     }
 
     public static List<String> getClaimValue(BrokeredIdentityContext context, String claim) {
-        JsonNode profile = (JsonNode) context.getContextData().get("USER_INFO");
+        Object profileObj = context.getContextData().get("USER_INFO");
+        JsonNode profile = profileObj instanceof JsonNode ? (JsonNode) profileObj : null;
         if (profile == null) return Collections.emptyList();
 
         JsonNode value = AbstractJsonUserAttributeMapper.getJsonValue(profile, claim);
