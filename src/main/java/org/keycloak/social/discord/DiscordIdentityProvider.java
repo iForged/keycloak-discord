@@ -36,7 +36,6 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.services.ErrorPageException;
 import org.keycloak.services.messages.Messages;
 
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -103,7 +102,6 @@ public class DiscordIdentityProvider
                 log.warnf("Discord login attempt with unverified email: %s", emailNode.asText());
                 throw new IdentityBrokerException("Discord account email is not verified");
             }
-
             user.setEmail(emailNode.asText());
         }
 
@@ -131,7 +129,6 @@ public class DiscordIdentityProvider
         }
 
         String pictureUrl = String.format(USER_PICTURE_URL, user.getId(), avatarHash, extension, "256");
-
         user.setUserAttribute("picture", pictureUrl);
 
         if (profile instanceof ObjectNode objectNode) {
@@ -139,7 +136,6 @@ public class DiscordIdentityProvider
         }
     }
 
-    @Override
     protected BrokeredIdentityContext doGetFederatedIdentity(String accessToken) {
         log.debug("doGetFederatedIdentity()");
 
@@ -154,7 +150,6 @@ public class DiscordIdentityProvider
 
         ArrayNode groups = JsonNodeFactory.instance.arrayNode();
 
-        // Проверка допустимых гильдий
         if (getConfig().hasAllowedGuilds()) {
             try {
                 JsonNode guilds = SimpleHttp.doGet(GROUP_URL, session)
@@ -240,7 +235,7 @@ public class DiscordIdentityProvider
         if (getConfig().hasAllowedGuilds()) {
             scopes += " " + GUILDS_SCOPE;
         }
-        if (getConfig().hasMappedRoles()) {
+        if (getConfig().hasDiscordRoleMapping())
             scopes += " " + ROLES_SCOPE;
         }
         return scopes;
