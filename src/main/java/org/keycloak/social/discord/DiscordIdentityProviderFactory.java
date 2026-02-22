@@ -59,29 +59,30 @@ public class DiscordIdentityProviderFactory extends AbstractIdentityProviderFact
                 .label("Guild Id(s) to allow federation")
                 .helpText("If you want to allow federation for specific guild, enter the guild id. Please use a comma as a separator for multiple guilds.")
                 .add()
-
+                .property()
+                .name(DiscordIdentityProviderConfig.DISCORD_ROLE_MAPPING)
+                .type(ProviderConfigProperty.TEXT_TYPE)
+                .label("Discord Role Mapping")
+                .helpText("Multiline mapping: guild_id:role_id:group_name_in_keycloak\n" +
+                          "Examples:\n" +
+                          "1307843121031282738:1308020497815965727:DiscordAdmin\n" +
+                          "1307843121031282738:1308020875131486208:Test\n" +
+                          "1307843121031282738::GuildMember   ← membership without role check\n" +
+                          "\n# Lines starting with # are comments\nEmpty lines ignored")
+                .add()
                 .property()
                 .name(DiscordIdentityProviderConfig.PROMPT)
                 .type(ProviderConfigProperty.STRING_TYPE)
                 .label("Prompt")
                 .helpText("OAuth2 prompt parameter to send to Discord (e.g., 'none' to skip consent screen if scopes are already authorized). Leave empty to use default behavior.")
                 .add()
-
-                .property()
-                .name(DiscordIdentityProviderConfig.MAPPED_ROLES)
-                .type(ProviderConfigProperty.STRING_TYPE)
-                .label("Discord Roles mapping")
-                .helpText("Map Discord roles to Keycloak groups. Format: <guild_id>:<role_id>:<group_name_in_keycloak> or <guild_id>::<group_name> (for membership in guild without specific role). Use comma as separator for multiple mappings. Example: 123456789:987654321:Moderators,111222333::Members")
-                .add()
-
                 .property()
                 .name(DiscordIdentityProviderConfig.PROMPT_NONE)
                 .type(ProviderConfigProperty.BOOLEAN_TYPE)
                 .label("Skip Discord prompt (prompt=none)")
-                .helpText("If enabled, adds 'prompt=none' to the authorization URL. This skips the Discord consent screen for users who have already authorized the application (useful for seamless login).")
+                .helpText("If enabled, adds 'prompt=none' to the authorization URL. This skips the Discord consent screen for users who have already authorized the application.")
                 .defaultValue(Boolean.FALSE)
                 .add()
-
                 .build();
     }
 
