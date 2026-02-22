@@ -160,10 +160,9 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
         return groups;
     }
 
-    public static List<String> getClaimValue(BrokeredIdentityContext context, String claim) {
+    public static List<String> getClaimValue(BrokeredIdentityContext context, String claimPath) {
         Object profileObj = context.getContextData().get("USER_INFO");
         JsonNode profile = null;
-
         ObjectMapper mapper = new ObjectMapper();
 
         if (profileObj instanceof JsonNode) {
@@ -174,16 +173,27 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
 
         if (profile == null) return Collections.emptyList();
 
-        JsonNode value = AbstractJsonUserAttributeMapper.getJsonValue(profile, claim);
-        if (value == null || value.isNull()) return Collections.emptyList();
+        String[] parts = claimPath.split("(?<!\\\\)\\.");
+        JsonNode node = profile;
+        for (String part : parts) {
+            part = part.replace("\\.", ".");
+            if (node.has(part)) {
+                node = node.get(part);
+            } else {
+                node = null;
+                break;
+            }
+        }
+
+        if (node == null || node.isNull()) return Collections.emptyList();
 
         List<String> result = new ArrayList<>();
-        if (value.isArray()) {
-            for (JsonNode node : value) {
-                if (node.isTextual()) result.add(node.asText());
+        if (node.isArray()) {
+            for (JsonNode n : node) {
+                if (n.isTextual()) result.add(n.asText());
             }
-        } else if (value.isTextual()) {
-            result.add(value.asText());
+        } else if (node.isTextual()) {
+            result.add(node.asText());
         }
         return result;
     }
