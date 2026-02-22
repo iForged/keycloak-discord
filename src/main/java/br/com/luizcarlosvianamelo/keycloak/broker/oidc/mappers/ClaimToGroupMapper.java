@@ -37,6 +37,7 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
     private static final String CREATE_GROUPS = "create_groups";
     private static final String CLEAR_ROLES_IF_NONE = "clearRolesIfNone";
     private static final String DISCORD_ROLE_MAPPING = "discord_role_mapping";
+    private static final String DISCORD_BOT_TOKEN = "discord_bot_token";
 
     static {
         ProviderConfigProperty property;
@@ -73,6 +74,12 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
         property.setLabel("Discord Role Mapping");
         property.setHelpText("Map Discord roles to Keycloak groups. Format: <guild_id>:<role_id>:<group_name_in_keycloak> or <guild_id>::<group_name> (for membership in guild without specific role). Use comma as separator for multiple mappings. Example: 123456789:987654321:Moderators,111222333::Members");
         property.setType(ProviderConfigProperty.TEXT_TYPE);
+        CONFIG_PROPERTIES.add(property);
+
+        property = new ProviderConfigProperty();
+        property.setName(DISCORD_BOT_TOKEN);
+        property.setLabel("Discord Bot Token");
+        property.setType(ProviderConfigProperty.PASSWORD);
         CONFIG_PROPERTIES.add(property);
     }
 
@@ -226,15 +233,70 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
 
         Set<String> discordGrantedGroups = new HashSet<>();
         if (!discordMappings.isEmpty()) {
-            discordGrantedGroups.addAll(discordMappings.stream().map(e -> e.groupName).collect(Collectors.toSet()));
-            logger.infof("TEST MODE: Granting all %d mapped Discord groups to user [%s]: %s",
-                    discordGrantedGroups.size(),
-                    user.getUsername(),
-                    String.join(", ", discordGrantedGroups));
+            String botToken = mapperModel.getConfig().get(DISCORD_BOT_TOKEN);
+            if (botToken != null && !botToken.isEmpty()) {
+                logger.infof("Starting Discord API checks with bot token for %d mappings", discordMappings.size());
+                for (MappingEntry entry : discordMappings) {
+                    try {
+                        String url = "https://discord.com/api/v10/users/@me/guilds/" + entry.guildId + "/member";
+                        logger.infof("Requesting Discord member info for guild %s", entry.guildId);
+
+                        JsonNode member = SimpleHttp.doGet(url, session)
+                                .header("Authorization", "Bot " + botToken)
+                                .asJson();
+
+                        logger.infof("Discord API response status for guild %s: %s", entry.guildId, member != null ? "received" : "null");
+
+                        if (member != null) {
+                            if (member.isMissingNode()) {
+                                logger.warnf("Discord returned missing node for guild %s", entry.guildId);
+                            } else {
+                                logger.infof("Discord member JSON: %s", member.toString());
+                                JsonNode rolesNode = member.get("roles");
+                                logger.infof("Roles node exists: %s, value: %s", rolesNode != null, rolesNode != null ? rolesNode.toString() : "null");
+
+                                boolean hasAccess = false;
+                                if (entry.roleId.isEmpty()) {
+                                    hasAccess = true;
+                                    logger.infof("Guild membership only required for group %s - granting access", entry.groupName);
+                                } else {
+                                    if (rolesNode != null && rolesNode.isArray()) {
+                                        for (JsonNode role : rolesNode) {
+                                            String roleStr = role.asText();
+                                            logger.debugf("Checking role %s against required %s", roleStr, entry.roleId);
+                                            if (entry.roleId.equals(roleStr)) {
+                                                hasAccess = true;
+                                                logger.infof("Found matching role %s for group %s", entry.roleId, entry.groupName);
+                                                break;
+                                            }
+                                        }
+                                    } else {
+                                        logger.warnf("No roles array in response for guild %s", entry.guildId);
+                                    }
+                                }
+
+                                logger.infof("Has access for entry group %s: %s", entry.groupName, hasAccess);
+
+                                if (hasAccess) {
+                                    discordGrantedGroups.add(entry.groupName);
+                                    logger.debugf("Added group from Discord API: %s (guild=%s, role=%s)", entry.groupName, entry.guildId, entry.roleId.isEmpty() ? "membership" : entry.roleId);
+                                } else {
+                                    logger.infof("No access granted for group %s in guild %s", entry.groupName, entry.guildId);
+                                }
+                            }
+                        } else {
+                            logger.warnf("Discord API returned null member for guild %s", entry.guildId);
+                        }
+                    } catch (Exception e) {
+                        logger.errorf(e, "Exception during Discord API check for guild %s", entry.guildId);
+                    }
+                }
+            } else {
+                logger.infof("Skipped Discord API checks: token=%s, mappings count=%d", botToken == null ? "null" : "present", discordMappings.size());
+            }
         }
-
         Set<String> effectiveGroupNames = new HashSet<>();
-
+        
         Set<String> filteredClaimGroups = claimGroups.stream()
                 .filter(t -> isEmpty(containsText) || t.contains(containsText))
                 .collect(Collectors.toSet());
