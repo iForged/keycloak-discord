@@ -4,7 +4,6 @@ import org.jboss.logging.Logger;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.keycloak.broker.oidc.KeycloakOIDCIdentityProviderFactory;
 import org.keycloak.broker.oidc.OIDCIdentityProviderFactory;
-import org.keycloak.broker.oidc.OIDCIdentityProvider; // исправленный импорт
 import org.keycloak.broker.oidc.mappers.AbstractClaimMapper;
 import org.keycloak.broker.oidc.mappers.AbstractJsonUserAttributeMapper;
 import org.keycloak.broker.provider.BrokeredIdentityContext;
@@ -75,8 +74,14 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
         property = new ProviderConfigProperty();
         property.setName(DISCORD_ROLE_MAPPING);
         property.setLabel("Discord Role Mapping");
-        property.setHelpText("Map Discord roles to Keycloak groups. Format: <guild_id>:<role_id>:<group_name_in_keycloak> or <guild_id>::<group_name> (for membership in guild without specific role). Use comma as separator for multiple mappings. Example: 123456789:987654321:Moderators,111222333::Members");
-        property.setType(ProviderConfigProperty.STRING_TYPE);
+        property.setHelpText("Map Discord roles to Keycloak groups.\n" +
+                "Use '#' for comments.\n" +
+                "Format per line: <guild_id>:<role_id>:<group_name_in_keycloak>\n" +
+                "Example:\n" +
+                "# comment\n" +
+                "123456789:987654321:Moderators\n" +
+                "111222333:444555666:Members");
+        property.setType(ProviderConfigProperty.TEXT_TYPE);
         CONFIG_PROPERTIES.add(property);
     }
 
@@ -124,7 +129,7 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
     }
 
     public static List<String> getClaimValue(BrokeredIdentityContext context, String claim) {
-        JsonNode profileJsonNode = (JsonNode) context.getContextData().get(OIDCIdentityProvider.USER_INFO);
+        JsonNode profileJsonNode = (JsonNode) context.getContextData().get("userInfo");
         var roles = AbstractJsonUserAttributeMapper.getJsonValue(profileJsonNode, claim);
         if(roles == null) {
             return new ArrayList<>();
@@ -146,10 +151,10 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
             return Collections.emptyMap();
         }
         Map<String, String> mapping = new HashMap<>();
-        String[] entries = configValue.split(",");
-        for (String entry : entries) {
-            String trimmed = entry.trim();
-            if (trimmed.isEmpty()) continue;
+        String[] lines = configValue.split("\\r?\\n");
+        for (String line : lines) {
+            String trimmed = line.trim();
+            if (trimmed.isEmpty() || trimmed.startsWith("#")) continue;
             String[] parts = trimmed.split(":", -1);
             if (parts.length != 3) {
                 logger.warnf("Invalid mapping entry (expected 3 parts): %s", trimmed);
