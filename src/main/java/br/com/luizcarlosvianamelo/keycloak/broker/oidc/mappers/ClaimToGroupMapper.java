@@ -39,29 +39,28 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
         property = new ProviderConfigProperty();
         property.setName(CLAIM);
         property.setLabel("Claim");
-        property.setHelpText("Name of claim to search for in token/userinfo. Usually 'discord-groups' for Discord. " +
-                             "Supports nested claims with dot notation (escape literal dot with \\.)");
+        property.setHelpText("Name of claim containing groups (usually 'discord-groups' for Discord provider). Supports nested paths with '.' (escape literal dot with \\.)");
         property.setType(ProviderConfigProperty.STRING_TYPE);
         CONFIG_PROPERTIES.add(property);
 
         property = new ProviderConfigProperty();
         property.setName(CONTAINS_TEXT);
         property.setLabel("Contains text");
-        property.setHelpText("Only sync groups that contain this text in their name. Leave empty to sync all.");
+        property.setHelpText("Only synchronize groups containing this substring. Leave empty to sync all.");
         property.setType(ProviderConfigProperty.STRING_TYPE);
         CONFIG_PROPERTIES.add(property);
 
         property = new ProviderConfigProperty();
         property.setName(CREATE_GROUPS);
         property.setLabel("Create groups if not exists");
-        property.setHelpText("Create missing groups in the realm if they do not exist.");
+        property.setHelpText("Automatically create groups in realm if they don't exist.");
         property.setType(ProviderConfigProperty.BOOLEAN_TYPE);
         CONFIG_PROPERTIES.add(property);
 
         property = new ProviderConfigProperty();
         property.setName(CLEAR_ROLES_IF_NONE);
         property.setLabel("Clear groups if no groups found");
-        property.setHelpText("Remove previously assigned groups if no groups are received from the claim.");
+        property.setHelpText("Remove all synced groups if claim is empty or no groups matched.");
         property.setType(ProviderConfigProperty.BOOLEAN_TYPE);
         CONFIG_PROPERTIES.add(property);
     }
@@ -88,7 +87,7 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
 
     @Override
     public String getHelpText() {
-        return "Synchronizes groups from an IdP claim (array of strings) to realm groups.";
+        return "Synchronizes groups from IdP claim (array of strings) to Keycloak realm groups.";
     }
 
     @Override
@@ -163,21 +162,15 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
 
     public static List<String> getClaimValue(BrokeredIdentityContext context, String claim) {
         JsonNode profile = (JsonNode) context.getContextData().get("USER_INFO");
-        if (profile == null) {
-            return Collections.emptyList();
-        }
+        if (profile == null) return Collections.emptyList();
 
         JsonNode value = AbstractJsonUserAttributeMapper.getJsonValue(profile, claim);
-        if (value == null || value.isNull()) {
-            return Collections.emptyList();
-        }
+        if (value == null || value.isNull()) return Collections.emptyList();
 
         List<String> result = new ArrayList<>();
         if (value.isArray()) {
             for (JsonNode node : value) {
-                if (node.isTextual()) {
-                    result.add(node.asText());
-                }
+                if (node.isTextual()) result.add(node.asText());
             }
         } else if (value.isTextual()) {
             result.add(value.asText());
