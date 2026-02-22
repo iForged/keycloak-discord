@@ -66,21 +66,18 @@ public class DiscordIdentityProvider
         config.setTokenUrl(TOKEN_URL);
         config.setUserInfoUrl(PROFILE_URL);
         if (config.isPromptNone()) {
-            config.getAdditionalConfig().put("prompt", "none");
+            config.getConfig().put("prompt", "none");
         }
     }
 
-    @Override
     protected boolean supportsExternalExchange() {
         return true;
     }
 
-    @Override
     protected String getProfileEndpointForValidation(EventBuilder event) {
         return PROFILE_URL;
     }
 
-    @Override
     protected BrokeredIdentityContext extractIdentityFromProfile(EventBuilder event, JsonNode profile) {
         BrokeredIdentityContext user = new BrokeredIdentityContext(getJsonProperty(profile, "id"), getConfig());
 
@@ -97,7 +94,6 @@ public class DiscordIdentityProvider
 
         if (emailNode != null && !emailNode.isNull()) {
             if (verifiedNode == null || !verifiedNode.asBoolean()) {
-                log.warnf("Discord login attempt with unverified email: %s", emailNode.asText());
                 throw new IdentityBrokerException("Discord account email is not verified");
             }
             user.setEmail(emailNode.asText());
@@ -130,7 +126,6 @@ public class DiscordIdentityProvider
         }
     }
 
-    @Override
     protected BrokeredIdentityContext doGetFederatedIdentity(String accessToken) {
         JsonNode profile;
 
