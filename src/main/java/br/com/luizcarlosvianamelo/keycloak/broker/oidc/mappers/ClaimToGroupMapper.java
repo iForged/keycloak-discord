@@ -2,11 +2,10 @@ package br.com.luizcarlosvianamelo.keycloak.broker.oidc.mappers;
 
 import org.jboss.logging.Logger;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.keycloak.broker.oidc.KeycloakOIDCIdentityProviderFactory;
 import org.keycloak.broker.oidc.OIDCIdentityProviderFactory;
 import org.keycloak.broker.oidc.mappers.AbstractClaimMapper;
-import org.keycloak.broker.oidc.mappers.AbstractJsonUserAttributeMapper;
 import org.keycloak.broker.provider.BrokeredIdentityContext;
 import org.keycloak.models.*;
 import org.keycloak.provider.ProviderConfigProperty;
@@ -163,7 +162,16 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
 
     public static List<String> getClaimValue(BrokeredIdentityContext context, String claim) {
         Object profileObj = context.getContextData().get("USER_INFO");
-        JsonNode profile = profileObj instanceof JsonNode ? (JsonNode) profileObj : null;
+        JsonNode profile = null;
+
+        ObjectMapper mapper = new ObjectMapper();
+
+        if (profileObj instanceof JsonNode) {
+            profile = (JsonNode) profileObj;
+        } else if (profileObj instanceof Map) {
+            profile = mapper.valueToTree(profileObj);
+        }
+
         if (profile == null) return Collections.emptyList();
 
         JsonNode value = AbstractJsonUserAttributeMapper.getJsonValue(profile, claim);
