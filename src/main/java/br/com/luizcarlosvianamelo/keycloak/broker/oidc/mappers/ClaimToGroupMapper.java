@@ -11,6 +11,7 @@ import org.keycloak.broker.provider.BrokeredIdentityContext;
 import org.keycloak.models.*;
 import org.keycloak.provider.ProviderConfigProperty;
 import org.keycloak.social.discord.DiscordIdentityProviderFactory;
+import org.keycloak.http.simple.SimpleHttp;  // ← добавлен импорт
 import java.util.*;
 import java.util.stream.Collectors;
 
