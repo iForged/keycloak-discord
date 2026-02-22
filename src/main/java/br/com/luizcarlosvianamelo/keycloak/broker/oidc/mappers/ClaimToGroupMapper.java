@@ -226,7 +226,7 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
                     String url = "https://discord.com/api/v10/users/@me/guilds/" + entry.guildId + "/member";
                     logger.infof("Requesting Discord member info for guild %s", entry.guildId);
 
-                    JsonNode member = SimpleHttp.doGet(url)
+                    JsonNode member = SimpleHttp.create(session).doGet(url)
                             .header("Authorization", "Bot " + botToken)
                             .asJson();
 
