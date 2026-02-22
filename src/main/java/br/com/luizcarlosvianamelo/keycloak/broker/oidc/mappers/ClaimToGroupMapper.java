@@ -189,7 +189,13 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
     }
     private Set<GroupModel> getNewGroups(RealmModel realm, Set<String> newGroupsNames, boolean createGroups, BrokeredIdentityContext context) {
         Set<GroupModel> groups = new HashSet<>();
-        JsonNode profile = (JsonNode) context.getContextData().get(OIDCIdentityProvider.USER_INFO);
+        
+        Object userInfoObj = context.getContextData().get(OIDCIdentityProvider.USER_INFO);
+        JsonNode profile = null;
+        if (userInfoObj instanceof JsonNode) {
+            profile = (JsonNode) userInfoObj;
+        }
+        
         JsonNode roleMapping = profile != null ? profile.get("discord_role_mapping") : null;
 
         for (String groupName : newGroupsNames) {
