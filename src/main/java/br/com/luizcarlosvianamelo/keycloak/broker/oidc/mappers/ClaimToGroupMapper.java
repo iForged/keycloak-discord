@@ -13,6 +13,7 @@ import org.keycloak.social.discord.DiscordIdentityProviderFactory;
 import java.util.*;
 import java.util.stream.Collectors;
 import org.keycloak.broker.provider.util.SimpleHttp;
+import org.keycloak.models.FederatedIdentityModel;
 
 public class ClaimToGroupMapper extends AbstractClaimMapper {
 
@@ -38,30 +39,35 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
         property = new ProviderConfigProperty();
         property.setName(CLAIM);
         property.setLabel("Claim");
+        property.setHelpText("Name of claim to search for in token.");
         property.setType(ProviderConfigProperty.STRING_TYPE);
         CONFIG_PROPERTIES.add(property);
 
         property = new ProviderConfigProperty();
         property.setName(CONTAINS_TEXT);
         property.setLabel("Contains text");
+        property.setHelpText("Only sync groups that contains this text in its name.");
         property.setType(ProviderConfigProperty.STRING_TYPE);
         CONFIG_PROPERTIES.add(property);
 
         property = new ProviderConfigProperty();
         property.setName(CREATE_GROUPS);
         property.setLabel("Create groups if not exists");
+        property.setHelpText("Indicates if missing groups must be created in the realms.");
         property.setType(ProviderConfigProperty.BOOLEAN_TYPE);
         CONFIG_PROPERTIES.add(property);
 
         property = new ProviderConfigProperty();
         property.setName(CLEAR_ROLES_IF_NONE);
         property.setLabel("Clear discord roles if no roles found");
+        property.setHelpText("Should Discord roles be cleared out if no roles can be retrieved");
         property.setType(ProviderConfigProperty.BOOLEAN_TYPE);
         CONFIG_PROPERTIES.add(property);
 
         property = new ProviderConfigProperty();
         property.setName(DISCORD_ROLE_MAPPING);
         property.setLabel("Discord Role Mapping");
+        property.setHelpText("Format: <guild_id>:<role_id>:<group_name>");
         property.setType(ProviderConfigProperty.TEXT_TYPE);
         CONFIG_PROPERTIES.add(property);
 
@@ -104,37 +110,50 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
     }
 
     @Override
+    public String getHelpText() {
+        return "If a claim exists, sync the IdP user's groups with realm groups";
+    }
+
+    @Override
     public List<ProviderConfigProperty> getConfigProperties() {
         return CONFIG_PROPERTIES;
     }
 
     @Override
-    public void importNewUser(KeycloakSession session, RealmModel realm, UserModel user, IdentityProviderMapperModel mapperModel, BrokeredIdentityContext context) {
+    public void importNewUser(KeycloakSession session, RealmModel realm, UserModel user,
+                              IdentityProviderMapperModel mapperModel, BrokeredIdentityContext context) {
         super.importNewUser(session, realm, user, mapperModel, context);
         this.syncGroups(session, realm, user, mapperModel, context);
     }
 
     @Override
-    public void updateBrokeredUser(KeycloakSession session, RealmModel realm, UserModel user, IdentityProviderMapperModel mapperModel, BrokeredIdentityContext context) {
+    public void updateBrokeredUser(KeycloakSession session, RealmModel realm, UserModel user,
+                                   IdentityProviderMapperModel mapperModel, BrokeredIdentityContext context) {
         this.syncGroups(session, realm, user, mapperModel, context);
     }
 
     public static List<String> getClaimValue(BrokeredIdentityContext context, String claim) {
         JsonNode profileJsonNode = (JsonNode) context.getContextData().get("USER_INFO");
         var roles = AbstractJsonUserAttributeMapper.getJsonValue(profileJsonNode, claim);
-        if (roles == null) return new ArrayList<>();
-        if (roles instanceof List) return (List<String>) roles;
+        if (roles == null) {
+            return new ArrayList<>();
+        }
+        if (roles instanceof List) {
+            return (List<String>) roles;
+        }
         return List.of(roles.toString());
     }
 
     private List<MappingEntry> getDiscordRoleMapping(IdentityProviderMapperModel mapperModel) {
         String configValue = mapperModel.getConfig().get(DISCORD_ROLE_MAPPING);
-        if (configValue == null || configValue.trim().isEmpty()) return Collections.emptyList();
+        if (configValue == null || configValue.trim().isEmpty()) {
+            return Collections.emptyList();
+        }
         List<MappingEntry> mappings = new ArrayList<>();
         String[] lines = configValue.split("\\r?\\n");
         for (String line : lines) {
             line = line.trim();
-            if (line.isEmpty()) continue;
+            if (line.isEmpty() || line.startsWith("#")) continue;
             String[] parts = line.split(":", -1);
             if (parts.length != 3) continue;
             mappings.add(new MappingEntry(parts[0].trim(), parts[1].trim(), parts[2].trim()));
@@ -142,7 +161,8 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
         return mappings;
     }
 
-    private void syncGroups(KeycloakSession session, RealmModel realm, UserModel user, IdentityProviderMapperModel mapperModel, BrokeredIdentityContext context) {
+    private void syncGroups(KeycloakSession session, RealmModel realm, UserModel user,
+                            IdentityProviderMapperModel mapperModel, BrokeredIdentityContext context) {
 
         String groupClaimName = mapperModel.getConfig().get(CLAIM);
         String containsText = mapperModel.getConfig().get(CONTAINS_TEXT);
@@ -153,6 +173,7 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
         if (isEmpty(groupClaimName)) return;
 
         List<String> newGroupsList = getClaimValue(context, groupClaimName);
+
         if (newGroupsList.isEmpty() && !clearRolesIfNone) return;
 
         List<MappingEntry> discordMappings = getDiscordRoleMapping(mapperModel);
@@ -166,17 +187,20 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
             for (MappingEntry entry : discordMappings) {
                 try {
                     String url = "https://discord.com/api/v10/guilds/" + entry.guildId + "/members/" + context.getUsername();
+
                     JsonNode member = SimpleHttp.doGet(url, session)
                             .header("Authorization", "Bot " + botToken)
                             .asJson();
 
-                    if (member != null && member.has("roles")) {
+                    logger.infof("Discord member JSON: %s", member != null ? member.toString() : "null");
+
+                    if (member != null) {
                         JsonNode rolesNode = member.get("roles");
                         boolean hasAccess = false;
 
                         if (entry.roleId.isEmpty()) {
                             hasAccess = true;
-                        } else {
+                        } else if (rolesNode != null && rolesNode.isArray()) {
                             for (JsonNode role : rolesNode) {
                                 if (entry.roleId.equals(role.asText())) {
                                     hasAccess = true;
@@ -208,9 +232,13 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
         for (GroupModel group : addGroups) user.joinGroup(group);
     }
 
-    private Set<GroupModel> getNewGroups(KeycloakSession session, RealmModel realm, Set<String> newGroupsNames, boolean createGroups, List<MappingEntry> discordMappings) {
+    private Set<GroupModel> getNewGroups(KeycloakSession session, RealmModel realm,
+                                         Set<String> newGroupsNames, boolean createGroups,
+                                         List<MappingEntry> discordMappings) {
+
         Set<GroupModel> groups = new HashSet<>();
-        Map<String, MappingEntry> mappingByGroup = discordMappings.stream().collect(Collectors.toMap(e -> e.groupName, e -> e));
+        Map<String, MappingEntry> mappingByGroup = discordMappings.stream()
+                .collect(Collectors.toMap(e -> e.groupName, e -> e));
 
         for (String groupName : newGroupsNames) {
             GroupModel group = session.groups().getGroupByName(realm, null, groupName);
