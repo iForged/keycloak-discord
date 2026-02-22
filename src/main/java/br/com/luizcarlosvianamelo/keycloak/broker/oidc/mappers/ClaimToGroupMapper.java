@@ -11,7 +11,7 @@ import org.keycloak.broker.provider.BrokeredIdentityContext;
 import org.keycloak.models.*;
 import org.keycloak.provider.ProviderConfigProperty;
 import org.keycloak.social.discord.DiscordIdentityProviderFactory;
-import org.keycloak.http.simple.SimpleHttp;  // ← добавлен импорт
+import org.keycloak.http.simple.SimpleHttp;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -226,7 +226,7 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
                     String url = "https://discord.com/api/v10/users/@me/guilds/" + entry.guildId + "/member";
                     logger.infof("Requesting Discord member info for guild %s", entry.guildId);
 
-                    JsonNode member = SimpleHttp.doGet(url, session)
+                    JsonNode member = SimpleHttp.doGet(url)
                             .header("Authorization", "Bot " + botToken)
                             .asJson();
 
