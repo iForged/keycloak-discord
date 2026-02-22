@@ -187,10 +187,10 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
         if (isEmpty(groupClaimName))
             return;
 
-        List<String> claimGroups = getClaimValue(context, groupClaimName);
+        List<String> newGroupsList = getClaimValue(context, groupClaimName);
 
         boolean clearRolesIfNone = Boolean.parseBoolean(mapperModel.getConfig().get(CLEAR_ROLES_IF_NONE));
-        if (claimGroups.isEmpty() && !clearRolesIfNone) {
+        if (newGroupsList.isEmpty() && !clearRolesIfNone) {
             logger.debugf("Realm [%s], IdP [%s]: no group claim (claim name: [%s]) for user [%s], ignoring...",
                     realm.getName(),
                     mapperModel.getIdentityProviderAlias(),
@@ -204,178 +204,45 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
                 mapperModel.getIdentityProviderAlias(),
                 user.getUsername());
 
-        List<MappingEntry> discordMappings = getDiscordRoleMapping(mapperModel);
-
-        logger.infof("Loaded %d Discord mappings", discordMappings.size());
-
-        if (!discordMappings.isEmpty() && createGroups) {
-            Map<String, MappingEntry> mappingByGroup = discordMappings.stream()
-                    .collect(Collectors.toMap(e -> e.groupName, e -> e, (o, n) -> n));
-
-            for (MappingEntry entry : mappingByGroup.values()) {
-                GroupModel group = session.groups().getGroupByName(realm, null, entry.groupName);
-                if (group == null) {
-                    logger.debugf("Realm [%s]: creating group [%s] from discord mapping", realm.getName(), entry.groupName);
-                    group = session.groups().createGroup(realm, entry.groupName);
-                    if (!entry.roleId.isEmpty()) {
-                        group.setSingleAttribute("discord_role_id", entry.roleId);
-                        logger.infof("Created group [%s] and set discord_role_id = [%s]", entry.groupName, entry.roleId);
-                    }
-                } else {
-                    logger.debugf("Group [%s] already exists", entry.groupName);
-                }
-            }
-        }
-
-        Set<String> discordGrantedGroups = new HashSet<>();
-        if (!discordMappings.isEmpty()) {
-            String accessToken = (String) context.getContextData().get("ACCESS_TOKEN");
-            if (accessToken == null) {
-                accessToken = (String) context.getContextData().get("access_token");
-            }
-
-            if (accessToken != null && !accessToken.isEmpty()) {
-                logger.infof("Using user access token for Discord role checks");
-                for (MappingEntry entry : discordMappings) {
-                    try {
-                        String url = "https://discord.com/api/v10/users/@me/guilds/" + entry.guildId + "/member";
-                        logger.infof("Requesting Discord member info for guild %s", entry.guildId);
-
-                        JsonNode member = SimpleHttp.doGet(url, session)
-                                .header("Authorization", "Bearer " + accessToken)
-                                .asJson();
-
-                        if (member == null || member.has("message")) {
-                            logger.warnf("Discord API error for guild %s: %s", entry.guildId, member != null ? member.toString() : "null");
-                            continue;
-                        }
-
-                        JsonNode rolesNode = member.get("roles");
-                        if (rolesNode == null || !rolesNode.isArray()) {
-                            logger.warnf("No roles array in response for guild %s", entry.guildId);
-                            continue;
-                        }
-
-                        boolean hasAccess = entry.roleId.isEmpty();
-                        if (!hasAccess) {
-                            for (JsonNode role : rolesNode) {
-                                String roleStr = role.asText();
-                                if (entry.roleId.equals(roleStr)) {
-                                    hasAccess = true;
-                                    break;
-                                }
-                            }
-                        }
-
-                        if (hasAccess) {
-                            discordGrantedGroups.add(entry.groupName);
-                            logger.debugf("Added group from Discord API: %s (guild=%s, role=%s)", entry.groupName, entry.guildId, entry.roleId.isEmpty() ? "membership" : entry.roleId);
-                        }
-                    } catch (Exception e) {
-                        logger.errorf(e, "Exception during Discord API check for guild %s", entry.guildId);
-                    }
-                }
-            } else {
-                logger.infof("No access token found in context - skipping Discord role check");
-            }
-        }
-
-        Set<String> effectiveGroupNames = new HashSet<>();
-
-        Set<String> filteredClaimGroups = claimGroups.stream()
+        Set<String> effectiveGroupNames = new HashSet<>(newGroupsList
+                .stream()
                 .filter(t -> isEmpty(containsText) || t.contains(containsText))
-                .collect(Collectors.toSet());
-        effectiveGroupNames.addAll(filteredClaimGroups);
-        logger.infof("Claim groups for user [%s] (after filter): %s",
-                user.getUsername(),
-                String.join(", ", filteredClaimGroups));
-
-        Set<String> filteredDiscordGroups = discordGrantedGroups.stream()
-                .filter(t -> isEmpty(containsText) || t.contains(containsText))
-                .collect(Collectors.toSet());
-        effectiveGroupNames.addAll(filteredDiscordGroups);
-        logger.infof("Discord granted groups for user [%s] (after filter): %s",
-                user.getUsername(),
-                String.join(", ", filteredDiscordGroups));
-
-        logger.infof("Effective group names for user [%s]: %s",
-                user.getUsername(),
-                String.join(", ", effectiveGroupNames));
+                .collect(Collectors.toSet()));
 
         Set<GroupModel> currentGroups = user.getGroupsStream()
                 .filter(g -> isEmpty(containsText) || g.getName().contains(containsText))
                 .collect(Collectors.toSet());
-        logger.infof("Current groups for user [%s]: %s",
-                user.getUsername(),
-                currentGroups.stream().map(GroupModel::getName).collect(Collectors.joining(", ")));
 
-        logger.infof("Will try to assign these groups: %s",
-                String.join(", ", effectiveGroupNames));
-        Set<GroupModel> newGroups = getNewGroups(session, realm, effectiveGroupNames, createGroups, discordMappings);
-        logger.infof("Final target groups (after getNewGroups): %s",
-                newGroups.stream().map(GroupModel::getName).collect(Collectors.joining(", ")));
-
+        Set<GroupModel> newGroups = getNewGroups(session, realm, effectiveGroupNames, createGroups);
         Set<GroupModel> removeGroups = getGroupsToBeRemoved(currentGroups, newGroups);
+
+        for (GroupModel group : removeGroups)
+            user.leaveGroup(group);
+
         Set<GroupModel> addGroups = getGroupsToBeAdded(currentGroups, newGroups);
 
-        logger.infof("Groups to ADD for user [%s]: %s",
-                user.getUsername(),
-                addGroups.stream().map(GroupModel::getName).collect(Collectors.joining(", ")));
-        logger.infof("Groups to REMOVE for user [%s]: %s",
-                user.getUsername(),
-                removeGroups.stream().map(GroupModel::getName).collect(Collectors.joining(", ")));
-
-        for (GroupModel group : removeGroups) {
-            user.leaveGroup(group);
-            logger.debugf("User [%s] left group [%s]", user.getUsername(), group.getName());
-        }
-
-        for (GroupModel group : addGroups) {
+        for (GroupModel group : addGroups)
             user.joinGroup(group);
-            logger.debugf("User [%s] joined group [%s]", user.getUsername(), group.getName());
-        }
 
-        logger.debugf("Realm [%s], IdP [%s]: finishing mapping groups for user [%s] (final groups: %d)",
+        logger.debugf("Realm [%s], IdP [%s]: finishing mapping groups for user [%s]",
                 realm.getName(),
                 mapperModel.getIdentityProviderAlias(),
-                user.getUsername(),
-                user.getGroupsStream().count());
+                user.getUsername());
     }
 
-    private Set<GroupModel> getNewGroups(KeycloakSession session, RealmModel realm, Set<String> newGroupsNames, boolean createGroups, List<MappingEntry> discordMappings) {
+    private Set<GroupModel> getNewGroups(KeycloakSession session, RealmModel realm, Set<String> newGroupsNames, boolean createGroups) {
         Set<GroupModel> groups = new HashSet<>();
-        Map<String, MappingEntry> mappingByGroup = discordMappings.stream()
-                .collect(Collectors.toMap(e -> e.groupName, e -> e));
 
         for (String groupName : newGroupsNames) {
             GroupModel group = session.groups().getGroupByName(realm, null, groupName);
-            boolean newlyCreated = false;
 
             if (group == null && createGroups) {
                 logger.debugf("Realm [%s]: creating group [%s]", realm.getName(), groupName);
                 group = session.groups().createGroup(realm, groupName);
-                newlyCreated = true;
             }
 
             if (group != null) {
-                MappingEntry entry = mappingByGroup.get(groupName);
-                String roleId = entry != null ? entry.roleId : null;
-                String current = group.getFirstAttribute("discord_role_id");
-
-                if (newlyCreated) {
-                    if (roleId != null && !roleId.isEmpty()) {
-                        group.setSingleAttribute("discord_role_id", roleId);
-                        logger.infof("Created group [%s] and set discord_role_id = [%s]", groupName, roleId);
-                    } else {
-                        logger.warnf("Created group [%s] but no roleId found in mapping for this group", groupName);
-                    }
-                } else if (current != null && !current.isEmpty()) {
-                    logger.debugf("Group [%s] already has discord_role_id = %s", groupName, current);
-                }
-
                 groups.add(group);
-            } else {
-                logger.warnf("Group [%s] not found and not created (createGroups=%b)", groupName, createGroups);
             }
         }
         return groups;
