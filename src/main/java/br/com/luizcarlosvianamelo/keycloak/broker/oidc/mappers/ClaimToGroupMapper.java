@@ -32,7 +32,6 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
     private static final String CONTAINS_TEXT = "contains_text";
     private static final String CREATE_GROUPS = "create_groups";
     private static final String CLEAR_ROLES_IF_NONE = "clearRolesIfNone";
-    private static final String DISCORD_ROLE_MAPPING = "discord_role_mapping";
 
     static {
         ProviderConfigProperty property;
@@ -40,55 +39,31 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
         property = new ProviderConfigProperty();
         property.setName(CLAIM);
         property.setLabel("Claim");
-        property.setHelpText("Name of claim to search for in token. This claim must be a string array with the names of the groups which the user is member. You can reference nested claims using a '.', i.e. 'address.locality'. To use dot (.) literally, escape it with backslash (\\.)");
+        property.setHelpText("Name of claim to search for in token/userinfo. Usually 'discord-groups' for Discord. " +
+                             "Supports nested claims with dot notation (escape literal dot with \\.)");
         property.setType(ProviderConfigProperty.STRING_TYPE);
         CONFIG_PROPERTIES.add(property);
 
         property = new ProviderConfigProperty();
         property.setName(CONTAINS_TEXT);
         property.setLabel("Contains text");
-        property.setHelpText("Only sync groups that contains this text in its name. If empty, sync all groups.");
+        property.setHelpText("Only sync groups that contain this text in their name. Leave empty to sync all.");
         property.setType(ProviderConfigProperty.STRING_TYPE);
         CONFIG_PROPERTIES.add(property);
 
         property = new ProviderConfigProperty();
         property.setName(CREATE_GROUPS);
         property.setLabel("Create groups if not exists");
-        property.setHelpText("Indicates if missing groups must be created in the realms. Otherwise, they will be ignored.");
+        property.setHelpText("Create missing groups in the realm if they do not exist.");
         property.setType(ProviderConfigProperty.BOOLEAN_TYPE);
         CONFIG_PROPERTIES.add(property);
 
         property = new ProviderConfigProperty();
         property.setName(CLEAR_ROLES_IF_NONE);
         property.setLabel("Clear groups if no groups found");
-        property.setHelpText("Should previously assigned groups be cleared if no groups can be retrieved");
+        property.setHelpText("Remove previously assigned groups if no groups are received from the claim.");
         property.setType(ProviderConfigProperty.BOOLEAN_TYPE);
         CONFIG_PROPERTIES.add(property);
-
-        property = new ProviderConfigProperty();
-        property.setName(DISCORD_ROLE_MAPPING);
-        property.setLabel("Discord Role Mapping");
-        property.setHelpText("Multiline mapping of Discord roles → Keycloak groups\n" +
-                             "Format: guild_id:role_id:group_name\n" +
-                             "Examples:\n" +
-                             "1307843121031282738:1308020497815965727:DiscordAdmin\n" +
-                             "1307843121031282738:1308020875131486208:Test\n" +
-                             "1307843121031282738::GuildMember   ← guild membership without a role\n" +
-                             "\nLines starting with # are ignored\nEmpty lines are ignored");
-        property.setType(ProviderConfigProperty.TEXT_TYPE);
-        CONFIG_PROPERTIES.add(property);
-    }
-
-    private static class MappingEntry {
-        String guildId;
-        String roleId;
-        String groupName;
-
-        MappingEntry(String guildId, String roleId, String groupName) {
-            this.guildId = guildId;
-            this.roleId = roleId;
-            this.groupName = groupName;
-        }
     }
 
     @Override
@@ -113,7 +88,7 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
 
     @Override
     public String getHelpText() {
-        return "Sync groups from claim or Discord roles mapping to realm groups";
+        return "Synchronizes groups from an IdP claim (array of strings) to realm groups.";
     }
 
     @Override
