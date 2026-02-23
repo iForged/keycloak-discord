@@ -2,10 +2,10 @@ package br.com.luizcarlosvianamelo.keycloak.broker.oidc.mappers;
 
 import org.jboss.logging.Logger;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.keycloak.broker.oidc.KeycloakOIDCIdentityProviderFactory;
 import org.keycloak.broker.oidc.OIDCIdentityProviderFactory;
 import org.keycloak.broker.oidc.mappers.AbstractClaimMapper;
+import org.keycloak.broker.oidc.mappers.AbstractJsonUserAttributeMapper;
 import org.keycloak.broker.provider.BrokeredIdentityContext;
 import org.keycloak.models.*;
 import org.keycloak.provider.ProviderConfigProperty;
@@ -14,6 +14,12 @@ import org.keycloak.social.discord.DiscordIdentityProviderFactory;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * Class with the implementation of the identity provider mapper that sync the
+ * user's groups received from an external IdP into the Keycloak groups.
+ *
+ * @author Luiz Carlos Viana Melo
+ */
 public class ClaimToGroupMapper extends AbstractClaimMapper {
 
     private static final Logger logger = Logger.getLogger(ClaimToGroupMapper.class);
@@ -31,7 +37,7 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
     private static final String CLAIM = "claim";
     private static final String CONTAINS_TEXT = "contains_text";
     private static final String CREATE_GROUPS = "create_groups";
-    private static final String CLEAR_ROLES_IF_NONE = "clearRolesIfNone";
+    private static final String CLEAR_GROUPS_IF_NONE = "clearGroupsIfNone";
 
     static {
         ProviderConfigProperty property;
@@ -39,28 +45,32 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
         property = new ProviderConfigProperty();
         property.setName(CLAIM);
         property.setLabel("Claim");
-        property.setHelpText("Name of claim containing groups (usually 'discord-groups' for Discord provider). Supports nested paths with '.' (escape literal dot with \\.)");
+        property.setHelpText("Name of claim to search for in token. This claim must be a string array with " +
+                "the names of the groups which the user is member. You can reference nested claims using a " +
+                "'.', i.e. 'address.locality'. To use dot (.) literally, escape it with backslash (\\.)");
         property.setType(ProviderConfigProperty.STRING_TYPE);
         CONFIG_PROPERTIES.add(property);
 
         property = new ProviderConfigProperty();
         property.setName(CONTAINS_TEXT);
         property.setLabel("Contains text");
-        property.setHelpText("Only synchronize groups containing this substring. Leave empty to sync all.");
+        property.setHelpText("Only sync groups that contains this text in its name. If empty, sync all groups.");
         property.setType(ProviderConfigProperty.STRING_TYPE);
         CONFIG_PROPERTIES.add(property);
 
         property = new ProviderConfigProperty();
         property.setName(CREATE_GROUPS);
         property.setLabel("Create groups if not exists");
-        property.setHelpText("Automatically create groups in realm if they don't exist.");
+        property.setHelpText("Indicates if missing groups must be created in the realms. Otherwise, they will " +
+                "be ignored.");
         property.setType(ProviderConfigProperty.BOOLEAN_TYPE);
+        property.setDefaultValue(Boolean.TRUE.toString());
         CONFIG_PROPERTIES.add(property);
 
         property = new ProviderConfigProperty();
-        property.setName(CLEAR_ROLES_IF_NONE);
+        property.setName(CLEAR_GROUPS_IF_NONE);
         property.setLabel("Clear groups if no groups found");
-        property.setHelpText("Remove all synced groups if claim is empty or no groups matched.");
+        property.setHelpText("Should Discord roles be cleared out if no roles can be retrieved for example when a user is no longer part of the discord server");
         property.setType(ProviderConfigProperty.BOOLEAN_TYPE);
         CONFIG_PROPERTIES.add(property);
     }
@@ -82,12 +92,12 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
 
     @Override
     public String getDisplayType() {
-        return "Claim to Group Mapper";
+        return "Claim to Group Mapper (Discord compatible)";
     }
 
     @Override
     public String getHelpText() {
-        return "Synchronizes groups from IdP claim (array of strings) to Keycloak realm groups.";
+        return "Синхронизирует группы из IdP claim в группы realm.";
     }
 
     @Override
@@ -98,42 +108,71 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
     @Override
     public void importNewUser(KeycloakSession session, RealmModel realm, UserModel user,
                               IdentityProviderMapperModel mapperModel, BrokeredIdentityContext context) {
-        syncGroups(session, realm, user, mapperModel, context);
+        super.importNewUser(session, realm, user, mapperModel, context);
+        syncGroups(realm, user, mapperModel, context);
     }
 
     @Override
     public void updateBrokeredUser(KeycloakSession session, RealmModel realm, UserModel user,
                                    IdentityProviderMapperModel mapperModel, BrokeredIdentityContext context) {
-        syncGroups(session, realm, user, mapperModel, context);
+        syncGroups(realm, user, mapperModel, context);
     }
 
-    private void syncGroups(KeycloakSession session, RealmModel realm, UserModel user,
-                            IdentityProviderMapperModel mapperModel, BrokeredIdentityContext context) {
+    public static List<String> getClaimValue(BrokeredIdentityContext context, String claim) {
+        JsonNode profileJsonNode = (JsonNode) context.getContextData().get(AbstractJsonUserAttributeMapper.USER_INFO);
+        if (profileJsonNode == null) {
+            logger.warn("USER_INFO not found in context");
+            return Collections.emptyList();
+        }
 
+        Object value = AbstractJsonUserAttributeMapper.getJsonValue(profileJsonNode, claim);
+        if (value == null) {
+            return Collections.emptyList();
+        }
+
+        List<String> result = new ArrayList<>();
+        if (value instanceof List) {
+            for (Object item : (List<?>) value) {
+                result.add(item.toString());
+            }
+        } else if (value instanceof JsonNode node && node.isArray()) {
+            for (JsonNode n : node) {
+                result.add(n.asText());
+            }
+        } else {
+            result.add(value.toString());
+        }
+        return result;
+    }
+
+    private void syncGroups(RealmModel realm, UserModel user, IdentityProviderMapperModel mapperModel, BrokeredIdentityContext context) {
         String claimName = mapperModel.getConfig().get(CLAIM);
-        if (claimName == null || claimName.trim().isEmpty()) {
+        if (isEmpty(claimName)) {
             return;
         }
 
         String containsText = mapperModel.getConfig().get(CONTAINS_TEXT);
-        boolean createGroups = Boolean.parseBoolean(mapperModel.getConfig().get(CREATE_GROUPS));
-        boolean clearIfNone = Boolean.parseBoolean(mapperModel.getConfig().get(CLEAR_ROLES_IF_NONE));
+        boolean createGroups = Boolean.parseBoolean(mapperModel.getConfig().getOrDefault(CREATE_GROUPS, "true"));
+        boolean clearIfNone = Boolean.parseBoolean(mapperModel.getConfig().get(CLEAR_GROUPS_IF_NONE));
 
-        List<String> claimGroups = getClaimValue(context, claimName);
+        List<String> newGroupsList = getClaimValue(context, claimName);
 
-        if (claimGroups.isEmpty() && !clearIfNone) {
+        if (newGroupsList.isEmpty() && !clearIfNone) {
+            logger.debugf("No groups in claim '%s' for user %s → ignoring", claimName, user.getUsername());
             return;
         }
 
-        Set<String> desired = claimGroups.stream()
-                .filter(t -> containsText == null || containsText.isEmpty() || t.contains(containsText))
+        logger.debugf("Syncing groups for user %s from claim '%s': %s", user.getUsername(), claimName, newGroupsList);
+
+        Set<String> desiredNames = newGroupsList.stream()
+                .filter(name -> isEmpty(containsText) || name.contains(containsText))
                 .collect(Collectors.toSet());
 
         Set<GroupModel> current = user.getGroupsStream()
-                .filter(g -> containsText == null || containsText.isEmpty() || g.getName().contains(containsText))
+                .filter(g -> isEmpty(containsText) || g.getName().contains(containsText))
                 .collect(Collectors.toSet());
 
-        Set<GroupModel> target = getOrCreateGroups(session, realm, desired, createGroups);
+        Set<GroupModel> target = getOrCreateGroups(realm, desiredNames, createGroups);
 
         Set<GroupModel> toRemove = new HashSet<>(current);
         toRemove.removeAll(target);
@@ -143,15 +182,17 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
 
         toRemove.forEach(user::leaveGroup);
         toAdd.forEach(user::joinGroup);
+
+        logger.debugf("Sync finished: added %d, removed %d for user %s", toAdd.size(), toRemove.size(), user.getUsername());
     }
 
-    private Set<GroupModel> getOrCreateGroups(KeycloakSession session, RealmModel realm,
-                                              Set<String> names, boolean create) {
+    private Set<GroupModel> getOrCreateGroups(RealmModel realm, Set<String> names, boolean create) {
         Set<GroupModel> groups = new HashSet<>();
         for (String name : names) {
-            GroupModel group = session.groups().getGroupByName(realm, null, name);
+            GroupModel group = realm.getGroupByName(name);
             if (group == null && create) {
-                group = session.groups().createGroup(realm, name);
+                logger.debugf("Creating missing group: %s", name);
+                group = realm.createGroup(name);
             }
             if (group != null) {
                 groups.add(group);
@@ -160,41 +201,7 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
         return groups;
     }
 
-    public static List<String> getClaimValue(BrokeredIdentityContext context, String claimPath) {
-        Object profileObj = context.getContextData().get("USER_INFO");
-        JsonNode profile = null;
-        ObjectMapper mapper = new ObjectMapper();
-
-        if (profileObj instanceof JsonNode) {
-            profile = (JsonNode) profileObj;
-        } else if (profileObj instanceof Map) {
-            profile = mapper.valueToTree(profileObj);
-        }
-
-        if (profile == null) return Collections.emptyList();
-
-        String[] parts = claimPath.split("(?<!\\\\)\\.");
-        JsonNode node = profile;
-        for (String part : parts) {
-            part = part.replace("\\.", ".");
-            if (node.has(part)) {
-                node = node.get(part);
-            } else {
-                node = null;
-                break;
-            }
-        }
-
-        if (node == null || node.isNull()) return Collections.emptyList();
-
-        List<String> result = new ArrayList<>();
-        if (node.isArray()) {
-            for (JsonNode n : node) {
-                if (n.isTextual()) result.add(n.asText());
-            }
-        } else if (node.isTextual()) {
-            result.add(node.asText());
-        }
-        return result;
+    private static boolean isEmpty(String str) {
+        return str == null || str.trim().isEmpty();
     }
 }
