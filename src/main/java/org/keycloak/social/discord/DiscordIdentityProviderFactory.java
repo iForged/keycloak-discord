@@ -61,9 +61,12 @@ public class DiscordIdentityProviderFactory extends AbstractIdentityProviderFact
                 .label("Discord Role Mapping")
                 .helpText("Multiline mapping: guild_id:role_id:group_name_in_keycloak\n" +
                         "Examples:\n" +
-                        "1307843121031282738:1308020497815965727:DiscordAdmin\n" +
-                        "1307843121031282738:1308020875131486208:Test\n" +
-                        "1307843121031282738::GuildMember\n" +
+                        "#Guild1\n" +
+                        "1111111111111111111:2222222222222222222:Guild1Admin\n" +
+                        "1111111111111111111:3333333333333333333:Guild1User\n" +
+                        "#Guild2\n" +
+                        "1307843121031282738::Guild2Member\n" +
+                        "------------------------------------\n" +  
                         "\n# Lines starting with # are comments\nEmpty lines ignored")
                 .add()
                 .property()
