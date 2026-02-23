@@ -44,6 +44,7 @@ class DiscordIdentityProviderTest {
   "username": "Nelly",
   "discriminator": "1337",
   "email": "nelly@discord.com"
+  "verified": true
 }
         """;
         JsonNode profile = mapper.readTree(jsonProfileLegacy);
@@ -62,6 +63,7 @@ class DiscordIdentityProviderTest {
   "username": "nelly",
   "discriminator": "0",
   "email": "nelly@discord.com"
+  "verified": true
 }
         """;
         JsonNode profile = mapper.readTree(jsonProfileNew);
@@ -81,6 +83,7 @@ class DiscordIdentityProviderTest {
   "username": "nelly",
   "discriminator": "0",
   "email": "nelly@discord.com"
+  "verified": true
 }
         """;
         JsonNode profile = mapper.readTree(jsonProfile);
@@ -100,6 +103,7 @@ class DiscordIdentityProviderTest {
   "discriminator": "0",
   "avatar": "8342729096ea3675442027381ff50dfe",
   "email": "nelly@discord.com"
+  "verified": true
 }
         """;
         JsonNode profile = mapper.readTree(jsonProfile);
@@ -120,6 +124,7 @@ class DiscordIdentityProviderTest {
   "discriminator": "0",
   "avatar": "a_8342729096ea3675442027381ff50dfe",
   "email": "nelly@discord.com"
+  "verified": true
 }
         """;
         JsonNode profile = mapper.readTree(jsonProfile);
