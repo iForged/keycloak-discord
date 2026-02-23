@@ -190,18 +190,25 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
                 user.getUsername());
     }
 
-    private Set<GroupModel> getNewGroups(RealmModel realm, Set<String> newGroupsNames, boolean createGroups) {
+    private Set<GroupModel> getNewGroups(RealmModel realm, Set<String> newGroupEntries, boolean createGroups) {
         Set<GroupModel> groups = new HashSet<>();
-        for (String groupName : newGroupsNames) {
+        for (String entry : newGroupEntries) {
+            String[] parts = entry.split(":", 2);
+            if (parts.length != 2) continue;
+    
+            String groupName = parts[0].trim();
+            String roleId    = parts[1].trim();
+    
             GroupModel group = getGroupByName(realm, groupName);
             if (group == null && createGroups) {
-                logger.debugf("Realm [%s]: creating group [%s]",
-                        realm.getName(),
-                        groupName);
+                logger.debugf("Realm [%s]: creating group [%s] with discord-role-id [%s]",
+                        realm.getName(), groupName, roleId);
                 group = realm.createGroup(groupName);
             }
-            if (group != null)
+            if (group != null) {
+                group.setSingleAttribute("discord-role-id", roleId);
                 groups.add(group);
+            }
         }
         return groups;
     }
