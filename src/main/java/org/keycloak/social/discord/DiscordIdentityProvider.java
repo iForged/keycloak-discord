@@ -34,7 +34,6 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.services.ErrorPageException;
 import org.keycloak.services.messages.Messages;
 
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -56,7 +55,7 @@ public class DiscordIdentityProvider
     public static final String GUILDS_SCOPE = "guilds";
     public static final String ROLES_SCOPE = "guilds.members.read";
 
-    public static final String USER_PICTURE_URL = "https://cdn.discordapp.com/avatars/%s/%s.%s?size=%s";
+    public static final String USER_PICTURE_URL = "https://cdn.discordapp.com/avatars/%s/%s.%s?size=256";
 
     private static final Pattern AVATAR_HASH_PATTERN = Pattern.compile("^(a_)?[0-9a-f]{32}$");
     private static final Pattern DISCORD_ID_PATTERN = Pattern.compile("^\\d+$");
@@ -97,7 +96,6 @@ public class DiscordIdentityProvider
 
         if (emailNode != null && !emailNode.isNull()) {
             if (verifiedNode == null || !verifiedNode.asBoolean()) {
-                log.warn("Discord account email is not verified");
                 throw new IdentityBrokerException("Discord account email is not verified");
             }
             user.setEmail(emailNode.asText());
@@ -115,13 +113,11 @@ public class DiscordIdentityProvider
 
     private void setUserPicture(BrokeredIdentityContext user, JsonNode profile) {
         if (user.getId() == null || !DISCORD_ID_PATTERN.matcher(user.getId()).matches()) {
-            log.debug("Invalid Discord ID");
             return;
         }
 
         String avatarHash = getJsonProperty(profile, "avatar");
         if (avatarHash == null || avatarHash.isEmpty() || !AVATAR_HASH_PATTERN.matcher(avatarHash).matches()) {
-            log.debug("Invalid avatar hash");
             return;
         }
 
@@ -147,23 +143,16 @@ public class DiscordIdentityProvider
                     .header("Authorization", "Bearer " + accessToken)
                     .asJson();
         } catch (Exception e) {
-            log.error("Failed to fetch Discord profile", e);
             throw new IdentityBrokerException("Could not obtain user profile from Discord.", e);
         }
-
-        log.info("Discord profile: " + profile.toPrettyString());
 
         ArrayNode groups = JsonNodeFactory.instance.arrayNode();
 
         if (getConfig().hasAllowedGuilds()) {
-            log.info("Allowed guilds: " + getConfig().getAllowedGuildsAsSet());
-
             try {
                 JsonNode guilds = SimpleHttp.doGet(GROUP_URL, session)
                         .header("Authorization", "Bearer " + accessToken)
                         .asJson();
-
-                log.info("User guilds: " + guilds.toPrettyString());
 
                 Set<String> allowedGuilds = getConfig().getAllowedGuildsAsSet();
                 boolean allowed = false;
@@ -179,11 +168,9 @@ public class DiscordIdentityProvider
                 }
 
                 if (!allowed) {
-                    log.warn("User not in allowed guilds");
                     throw new ErrorPageException(session, Response.Status.FORBIDDEN, Messages.INVALID_REQUESTER);
                 }
             } catch (Exception e) {
-                log.error("Guild validation failed", e);
                 throw new IdentityBrokerException("Could not verify allowed guilds for user.", e);
             }
         }
@@ -194,7 +181,6 @@ public class DiscordIdentityProvider
 
             for (String guildId : mappedRoles.keySet()) {
                 Map<String, String> guildMap = mappedRoles.get(guildId);
-                log.info("Processing guildId: " + guildId + " map=" + guildMap);
 
                 try {
                     JsonNode guildMember = SimpleHttp.doGet(String.format(GUILD_MEMBER_URL, guildId), session)
@@ -204,14 +190,7 @@ public class DiscordIdentityProvider
                     log.info("Guild member response: " + guildMember.toPrettyString());
 
                     if (!guildMember.has("joined_at")) {
-                        log.warn("User not member of guild " + guildId);
                         continue;
-                    }
-
-                    if (guildMap.containsKey("")) {
-                        String group = guildMap.get("");
-                        log.info("Adding default group: " + group);
-                        groups.add(group);
                     }
 
                     JsonNode rolesNode = guildMember.get("roles");
@@ -225,8 +204,6 @@ public class DiscordIdentityProvider
                                 String group = guildMap.get(roleId);
                                 log.info("Mapped role " + roleId + " to group " + group);
                                 groups.add(group);
-                            } else {
-                                log.info("No mapping for roleId: " + roleId);
                             }
                         }
                     }
@@ -234,8 +211,6 @@ public class DiscordIdentityProvider
                     log.error("Failed to process guild " + guildId, e);
                 }
             }
-        } else {
-            log.info("No Discord role mapping configured");
         }
 
         if (profile instanceof ObjectNode objectNode) {
@@ -243,18 +218,7 @@ public class DiscordIdentityProvider
             log.info("Final discord-groups: " + groups.toPrettyString());
         }
 
-        BrokeredIdentityContext context = extractIdentityFromProfile(null, profile);
-
-        if (groups.size() > 0) {
-            Set<String> kcGroups = new HashSet<>();
-            for (JsonNode g : groups) {
-                kcGroups.add(g.asText());
-            }
-            context.setGroups(kcGroups);
-            log.info("Groups applied to Keycloak user: " + kcGroups);
-        }
-
-        return context;
+        return extractIdentityFromProfile(null, profile);
     }
 
     protected String getDefaultScopes() {
@@ -269,7 +233,6 @@ public class DiscordIdentityProvider
         }
 
         log.info("Using scopes: " + scopes);
-
         return scopes;
     }
 }
