@@ -203,7 +203,7 @@ public class DiscordIdentityProvider
                             if (guildMap.containsKey(roleId)) {
                                 String group = guildMap.get(roleId);
                                 log.info("Mapped role " + roleId + " to group " + group);
-                                groups.add(group);
+                                groups.add(group + ":" + roleId);
                             }
                         }
                     }
