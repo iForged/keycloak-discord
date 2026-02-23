@@ -43,7 +43,7 @@ class DiscordIdentityProviderTest {
   "id": "80351110224678912",
   "username": "Nelly",
   "discriminator": "1337",
-  "email": "nelly@discord.com"
+  "email": "nelly@discord.com",
   "verified": true
 }
         """;
@@ -62,7 +62,7 @@ class DiscordIdentityProviderTest {
   "id": "80351110224678912",
   "username": "nelly",
   "discriminator": "0",
-  "email": "nelly@discord.com"
+  "email": "nelly@discord.com",
   "verified": true
 }
         """;
@@ -82,7 +82,7 @@ class DiscordIdentityProviderTest {
   "id": "80351110224678912",
   "username": "nelly",
   "discriminator": "0",
-  "email": "nelly@discord.com"
+  "email": "nelly@discord.com",
   "verified": true
 }
         """;
@@ -102,7 +102,7 @@ class DiscordIdentityProviderTest {
   "username": "nelly",
   "discriminator": "0",
   "avatar": "8342729096ea3675442027381ff50dfe",
-  "email": "nelly@discord.com"
+  "email": "nelly@discord.com",
   "verified": true
 }
         """;
@@ -123,7 +123,7 @@ class DiscordIdentityProviderTest {
   "username": "nelly",
   "discriminator": "0",
   "avatar": "a_8342729096ea3675442027381ff50dfe",
-  "email": "nelly@discord.com"
+  "email": "nelly@discord.com",
   "verified": true
 }
         """;
