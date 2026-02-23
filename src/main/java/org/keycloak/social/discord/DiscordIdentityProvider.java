@@ -34,6 +34,7 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.services.ErrorPageException;
 import org.keycloak.services.messages.Messages;
 
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -242,7 +243,18 @@ public class DiscordIdentityProvider
             log.info("Final discord-groups: " + groups.toPrettyString());
         }
 
-        return extractIdentityFromProfile(null, profile);
+        BrokeredIdentityContext context = extractIdentityFromProfile(null, profile);
+
+        if (groups.size() > 0) {
+            Set<String> kcGroups = new HashSet<>();
+            for (JsonNode g : groups) {
+                kcGroups.add(g.asText());
+            }
+            context.setGroups(kcGroups);
+            log.info("Groups applied to Keycloak user: " + kcGroups);
+        }
+
+        return context;
     }
 
     protected String getDefaultScopes() {
