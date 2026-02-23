@@ -5,6 +5,13 @@
 
 * remove trailing U+200E characters from test filenames ([6f1bbd4](https://github.com/iForged/keycloak-discord/commit/6f1bbd47be21a53c22e3a9acd3c40afec786be67))
 
+## [1.3.1](https://github.com/iForged/keycloak-discord/compare/v1.3.0...v1.3.1) (2026-02-23)
+
+
+### Bug Fixes
+
+* remove trailing U+200E characters from test filenames ([6f1bbd4](https://github.com/iForged/keycloak-discord/commit/6f1bbd47be21a53c22e3a9acd3c40afec786be67))
+
 ## [1.2.1](https://github.com/iForged/keycloak-discord/compare/v1.2.0...v1.2.1) (2026-02-19)
 
 
