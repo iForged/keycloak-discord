@@ -164,11 +164,12 @@ public class ClaimToGroupMapper extends AbstractClaimMapper {
                         .collect(Collectors.joining(","))
         );
         @SuppressWarnings("unchecked")
-        Set<String> newGroupsNames = newGroupsList
-                .stream()
-                .filter(t -> isEmpty(containsText) || t.contains(containsText))
-                .collect(Collectors.toSet());
-        Set<GroupModel> newGroups = getNewGroups(realm, newGroupsNames, createGroups);
+            
+        Set<String> newGroupEntries = newGroupsList
+            .stream()
+            .filter(t -> isEmpty(containsText) || t.contains(containsText))
+            .collect(Collectors.toSet());
+        Set<GroupModel> newGroups = getNewGroups(realm, newGroupEntries, createGroups);
         logger.debugf("Realm [%s], IdP [%s]: new groups for user [%s]: %s",
                 realm.getName(),
                 mapperModel.getIdentityProviderAlias(),
