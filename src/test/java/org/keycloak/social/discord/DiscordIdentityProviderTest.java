@@ -30,6 +30,7 @@ class DiscordIdentityProviderTest {
     @BeforeEach
     void setUp() {
         when(config.getAlias()).thenReturn("discord");
+        when(config.isEnabled()).thenReturn(true);
 
         provider = new DiscordIdentityProvider(session, config);
 
