@@ -47,7 +47,7 @@ public class DiscordIdentityProviderFactory extends AbstractIdentityProviderFact
 
     public List<ProviderConfigProperty> getConfigProperties() {
         List<ProviderConfigProperty> props = new ArrayList<>(super.getConfigProperties());
-        props.removeIf(p -> OAuth2IdentityProviderConfig.ACCEPTS_PROMPT_NONE_FORWARD_FROM_CLIENT.equals(p.getName()));
+        props.removeIf(p -> "acceptsPromptNoneForwardFromClient".equals(p.getName()));
 
         props.addAll(ProviderConfigurationBuilder.create()
                 .property()
