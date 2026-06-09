@@ -38,7 +38,6 @@ public class DiscordIdentityProviderFactory extends AbstractIdentityProviderFact
     }
 
     public DiscordIdentityProvider create(KeycloakSession session, IdentityProviderModel model) {
-        // FIX #4: убрана дублирующая логика prompt=none — она живёт только в конструкторе Provider
         return new DiscordIdentityProvider(session, new DiscordIdentityProviderConfig(model));
     }
 
@@ -47,8 +46,6 @@ public class DiscordIdentityProviderFactory extends AbstractIdentityProviderFact
     }
 
     public List<ProviderConfigProperty> getConfigProperties() {
-        // Берём стандартные поля родителя и убираем встроенный "Accepts prompt=none forward from client",
-        // чтобы в UI не было двух одинаковых по смыслу настроек
         List<ProviderConfigProperty> props = new ArrayList<>(super.getConfigProperties());
         props.removeIf(p -> OAuth2IdentityProviderConfig.ACCEPTS_PROMPT_NONE_FORWARD_FROM_CLIENT.equals(p.getName()));
 
