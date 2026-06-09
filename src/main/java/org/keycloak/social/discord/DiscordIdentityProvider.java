@@ -55,6 +55,7 @@ public class DiscordIdentityProvider
     public static final String GUILDS_SCOPE = "guilds";
     public static final String ROLES_SCOPE = "guilds.members.read";
 
+    // FIX #3: убран лишний параметр size=256 — он уже захардкожен в URL
     public static final String USER_PICTURE_URL = "https://cdn.discordapp.com/avatars/%s/%s.%s?size=256";
 
     private static final Pattern AVATAR_HASH_PATTERN = Pattern.compile("^(a_)?[0-9a-f]{32}$");
@@ -65,6 +66,7 @@ public class DiscordIdentityProvider
         config.setAuthorizationUrl(AUTH_URL);
         config.setTokenUrl(TOKEN_URL);
         config.setUserInfoUrl(PROFILE_URL);
+        // FIX #4: логика prompt=none только здесь, убрана из Factory
         if (config.isPromptNone()) {
             config.getConfig().put("prompt", "none");
         }
@@ -122,7 +124,9 @@ public class DiscordIdentityProvider
         }
 
         String extension = avatarHash.startsWith("a_") ? "gif" : "png";
-        String pictureUrl = String.format(USER_PICTURE_URL, user.getId(), avatarHash, extension, "256");
+        // FIX #3: было String.format(USER_PICTURE_URL, id, hash, ext, "256") — четыре аргумента на три %s
+        // USER_PICTURE_URL уже содержит ?size=256, четвёртый аргумент игнорировался
+        String pictureUrl = String.format(USER_PICTURE_URL, user.getId(), avatarHash, extension);
 
         user.setUserAttribute("picture", pictureUrl);
 
@@ -149,35 +153,44 @@ public class DiscordIdentityProvider
         ArrayNode groups = JsonNodeFactory.instance.arrayNode();
 
         if (getConfig().hasAllowedGuilds()) {
+            // FIX #1: ErrorPageException (RuntimeException) вынесен за пределы catch (Exception e),
+            // иначе он поглощался и пользователь видел Generic Broker Error вместо страницы 403
+            JsonNode guilds;
             try {
-                JsonNode guilds = SimpleHttp.doGet(GROUP_URL, session)
+                guilds = SimpleHttp.doGet(GROUP_URL, session)
                         .header("Authorization", "Bearer " + accessToken)
                         .asJson();
-
-                Set<String> allowedGuilds = getConfig().getAllowedGuildsAsSet();
-                boolean allowed = false;
-
-                for (JsonNode guild : guilds) {
-                    String guildId = getJsonProperty(guild, "id");
-                    log.info("Checking guildId: " + guildId);
-                    if (allowedGuilds.contains(guildId)) {
-                        allowed = true;
-                        log.info("Guild allowed: " + guildId);
-                        break;
-                    }
-                }
-
-                if (!allowed) {
-                    throw new ErrorPageException(session, Response.Status.FORBIDDEN, Messages.INVALID_REQUESTER);
-                }
             } catch (Exception e) {
-                throw new IdentityBrokerException("Could not verify allowed guilds for user.", e);
+                throw new IdentityBrokerException("Could not obtain guild list from Discord.", e);
+            }
+
+            Set<String> allowedGuilds = getConfig().getAllowedGuildsAsSet();
+            boolean allowed = false;
+
+            for (JsonNode guild : guilds) {
+                String guildId = getJsonProperty(guild, "id");
+                log.info("Checking guildId: " + guildId);
+                if (allowedGuilds.contains(guildId)) {
+                    allowed = true;
+                    log.info("Guild allowed: " + guildId);
+                    break;
+                }
+            }
+
+            if (!allowed) {
+                // Теперь ErrorPageException корректно пробрасывается — пользователь увидит 403
+                throw new ErrorPageException(session, Response.Status.FORBIDDEN, Messages.INVALID_REQUESTER);
             }
         }
 
         if (getConfig().hasDiscordRoleMapping()) {
             Map<String, Map<String, String>> mappedRoles = getConfig().getDiscordRoleMappingAsMap();
             log.info("Discord role mapping: " + mappedRoles);
+
+            if (mappedRoles.size() > 5) {
+                log.warnf("Role mapping contains %d guilds — this causes %d sequential HTTP requests to Discord API. " +
+                        "Consider Discord rate limits (50 req/s per token).", mappedRoles.size(), mappedRoles.size());
+            }
 
             for (String guildId : mappedRoles.keySet()) {
                 Map<String, String> guildMap = mappedRoles.get(guildId);
