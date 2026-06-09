@@ -17,6 +17,7 @@
 
 package org.keycloak.social.discord;
 
+import org.keycloak.broker.oidc.OAuth2IdentityProviderConfig;
 import org.keycloak.broker.provider.AbstractIdentityProviderFactory;
 import org.keycloak.broker.social.SocialIdentityProviderFactory;
 import org.keycloak.models.IdentityProviderModel;
@@ -24,6 +25,7 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.provider.ProviderConfigProperty;
 import org.keycloak.provider.ProviderConfigurationBuilder;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class DiscordIdentityProviderFactory extends AbstractIdentityProviderFactory<DiscordIdentityProvider>
@@ -36,11 +38,8 @@ public class DiscordIdentityProviderFactory extends AbstractIdentityProviderFact
     }
 
     public DiscordIdentityProvider create(KeycloakSession session, IdentityProviderModel model) {
-        DiscordIdentityProviderConfig config = new DiscordIdentityProviderConfig(model);
-        if (config.isPromptNone()) {
-            config.getConfig().put("prompt", "none");
-        }
-        return new DiscordIdentityProvider(session, config);
+        // FIX #4: убрана дублирующая логика prompt=none — она живёт только в конструкторе Provider
+        return new DiscordIdentityProvider(session, new DiscordIdentityProviderConfig(model));
     }
 
     public DiscordIdentityProviderConfig createConfig() {
@@ -48,7 +47,12 @@ public class DiscordIdentityProviderFactory extends AbstractIdentityProviderFact
     }
 
     public List<ProviderConfigProperty> getConfigProperties() {
-        return ProviderConfigurationBuilder.create()
+        // Берём стандартные поля родителя и убираем встроенный "Accepts prompt=none forward from client",
+        // чтобы в UI не было двух одинаковых по смыслу настроек
+        List<ProviderConfigProperty> props = new ArrayList<>(super.getConfigProperties());
+        props.removeIf(p -> OAuth2IdentityProviderConfig.ACCEPTS_PROMPT_NONE_FORWARD_FROM_CLIENT.equals(p.getName()));
+
+        props.addAll(ProviderConfigurationBuilder.create()
                 .property()
                 .name(DiscordIdentityProviderConfig.ALLOWED_GUILDS)
                 .type(ProviderConfigProperty.STRING_TYPE)
@@ -64,19 +68,23 @@ public class DiscordIdentityProviderFactory extends AbstractIdentityProviderFact
                         "#Guild1\n" +
                         "1111111111111111111:2222222222222222222:Guild1Admin\n" +
                         "1111111111111111111:3333333333333333333:Guild1User\n" +
-                        "#Guild2\n" +
-                        "1307843121031282738::Guild2Member\n" +
-                        "------------------------------------\n" +  
+                        "#Guild2 — everyone (use guild ID as role ID to match all members)\n" +
+                        "1307843121031282738:1307843121031282738:Guild2Member\n" +
+                        "------------------------------------\n" +
                         "\n# Lines starting with # are comments\nEmpty lines ignored")
                 .add()
                 .property()
                 .name(DiscordIdentityProviderConfig.PROMPT_NONE)
                 .type(ProviderConfigProperty.BOOLEAN_TYPE)
                 .label("Skip Discord prompt (prompt=none)")
-                .helpText("If enabled, adds 'prompt=none' to the authorization URL.")
+                .helpText("If enabled, adds 'prompt=none' to the authorization URL. " +
+                        "Works only if the user is already authenticated in Discord. " +
+                        "If not authenticated, Discord returns consent_required error.")
                 .defaultValue(Boolean.FALSE)
                 .add()
-                .build();
+                .build());
+
+        return props;
     }
 
     public String getId() {
