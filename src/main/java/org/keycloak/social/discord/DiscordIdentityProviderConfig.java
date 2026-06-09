@@ -21,6 +21,7 @@ import org.keycloak.broker.oidc.OAuth2IdentityProviderConfig;
 import org.keycloak.models.IdentityProviderModel;
 
 import java.util.*;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class DiscordIdentityProviderConfig extends OAuth2IdentityProviderConfig {
@@ -28,6 +29,7 @@ public class DiscordIdentityProviderConfig extends OAuth2IdentityProviderConfig 
     public static final String ALLOWED_GUILDS = "allowedGuilds";
     public static final String DISCORD_ROLE_MAPPING = "discord_role_mapping";
     public static final String PROMPT_NONE = "promptNone";
+    private static final Pattern SNOWFLAKE_PATTERN = Pattern.compile("^\\d{17,20}$");
 
     public DiscordIdentityProviderConfig(IdentityProviderModel model) {
         super(model);
@@ -105,11 +107,17 @@ public class DiscordIdentityProviderConfig extends OAuth2IdentityProviderConfig 
                 continue;
             }
 
-            String guildId = parts[0].trim();
-            String roleId = parts[1].trim();
+            String guildId   = parts[0].trim();
+            String roleId    = parts[1].trim();
             String groupName = parts[2].trim();
 
-            if (guildId.isEmpty() || groupName.isEmpty()) {
+            if (!SNOWFLAKE_PATTERN.matcher(guildId).matches()) {
+                continue;
+            }
+            if (!roleId.isEmpty() && !SNOWFLAKE_PATTERN.matcher(roleId).matches()) {
+                continue;
+            }
+            if (groupName.isEmpty()) {
                 continue;
             }
 
