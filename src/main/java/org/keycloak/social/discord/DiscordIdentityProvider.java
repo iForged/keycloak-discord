@@ -44,20 +44,15 @@ public class DiscordIdentityProvider
                    UserAuthenticationIdentityProvider<DiscordIdentityProviderConfig> {
 
     private static final Logger log = Logger.getLogger(DiscordIdentityProvider.class);
-
     public static final String AUTH_URL = "https://discord.com/oauth2/authorize";
     public static final String TOKEN_URL = "https://discord.com/api/oauth2/token";
     public static final String PROFILE_URL = "https://discord.com/api/users/@me";
     public static final String GROUP_URL = "https://discord.com/api/users/@me/guilds";
     public static final String GUILD_MEMBER_URL = "https://discord.com/api/users/@me/guilds/%s/member";
-
     public static final String DEFAULT_SCOPE = "identify email";
     public static final String GUILDS_SCOPE = "guilds";
     public static final String ROLES_SCOPE = "guilds.members.read";
-
-    // FIX #3: убран лишний параметр size=256 — он уже захардкожен в URL
     public static final String USER_PICTURE_URL = "https://cdn.discordapp.com/avatars/%s/%s.%s?size=256";
-
     private static final Pattern AVATAR_HASH_PATTERN = Pattern.compile("^(a_)?[0-9a-f]{32}$");
     private static final Pattern DISCORD_ID_PATTERN = Pattern.compile("^\\d+$");
 
@@ -66,7 +61,6 @@ public class DiscordIdentityProvider
         config.setAuthorizationUrl(AUTH_URL);
         config.setTokenUrl(TOKEN_URL);
         config.setUserInfoUrl(PROFILE_URL);
-        // FIX #4: логика prompt=none только здесь, убрана из Factory
         if (config.isPromptNone()) {
             config.getConfig().put("prompt", "none");
         }
@@ -124,8 +118,6 @@ public class DiscordIdentityProvider
         }
 
         String extension = avatarHash.startsWith("a_") ? "gif" : "png";
-        // FIX #3: было String.format(USER_PICTURE_URL, id, hash, ext, "256") — четыре аргумента на три %s
-        // USER_PICTURE_URL уже содержит ?size=256, четвёртый аргумент игнорировался
         String pictureUrl = String.format(USER_PICTURE_URL, user.getId(), avatarHash, extension);
 
         user.setUserAttribute("picture", pictureUrl);
@@ -153,8 +145,6 @@ public class DiscordIdentityProvider
         ArrayNode groups = JsonNodeFactory.instance.arrayNode();
 
         if (getConfig().hasAllowedGuilds()) {
-            // FIX #1: ErrorPageException (RuntimeException) вынесен за пределы catch (Exception e),
-            // иначе он поглощался и пользователь видел Generic Broker Error вместо страницы 403
             JsonNode guilds;
             try {
                 guilds = SimpleHttp.doGet(GROUP_URL, session)
@@ -178,7 +168,6 @@ public class DiscordIdentityProvider
             }
 
             if (!allowed) {
-                // Теперь ErrorPageException корректно пробрасывается — пользователь увидит 403
                 throw new ErrorPageException(session, Response.Status.FORBIDDEN, Messages.INVALID_REQUESTER);
             }
         }
